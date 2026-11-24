@@ -9,11 +9,10 @@ from django.utils import timezone
 
 from netbox_compare.choices import ComparisonStatusChoices
 from netbox_compare.credentials import resolve_credentials
-from netbox_compare.diff import compare
+from netbox_compare.diff import compare, validate_policy
 from netbox_compare.documented import documented_snapshot
 from netbox_compare.models import Comparison, Divergence
 from netbox_compare.modules import connection_for_platform
-from netbox_compare.policy import get_policy
 from netbox_compare_core import ConnectionModuleError, CredentialsError
 
 logger = logging.getLogger(__name__)
@@ -55,8 +54,10 @@ def _run(comparison: Comparison, log: logging.Logger) -> None:
     module_name, module, capabilities = selected
     comparison.connection_module = module_name
 
-    policy = get_policy()
-    comparison.policy = policy
+    if comparison.policy is None:
+        raise ComparisonError("The comparison policy was deleted before the comparison ran")
+    policy = validate_policy(comparison.policy.considered_fields)
+    comparison.policy_fields = policy
     requested = sorted(f for f in policy if f in capabilities.readable)
     log.info("Using connection module %r; requesting %d fields", module_name, len(requested))
 

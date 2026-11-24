@@ -1,14 +1,41 @@
 {% load i18n %}
-{% if supported %}
-  <form action="{{ compare_url }}" method="post" class="d-inline">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-primary">
-      <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
-    </button>
-  </form>
-{% else %}
+{% if not supported %}
   <button type="button" class="btn btn-primary" disabled
           title="{% blocktrans with platform=platform|default:_('(none)') %}No connection module declares platform {{ platform }}{% endblocktrans %}">
     <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
   </button>
+{% elif not policies %}
+  <button type="button" class="btn btn-primary" disabled title="{% trans 'No comparison policy exists yet' %}">
+    <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
+  </button>
+{% else %}
+  <form action="{{ compare_url }}" method="post" class="d-inline">
+    {% csrf_token %}
+    <div class="btn-group">
+      {% if default_policy %}
+        <button type="submit" name="policy" value="{{ default_policy.pk }}" class="btn btn-primary"
+                title="{% blocktrans with policy=default_policy %}Policy: {{ policy }}{% endblocktrans %}">
+          <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
+        </button>
+        <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+          <span class="visually-hidden">{% trans "Choose a policy" %}</span>
+        </button>
+      {% else %}
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+          <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
+        </button>
+      {% endif %}
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><h6 class="dropdown-header">{% trans "Comparison policy" %}</h6></li>
+        {% for policy in policies %}
+          <li>
+            <button type="submit" name="policy" value="{{ policy.pk }}" class="dropdown-item">
+              {{ policy }}{% if policy.is_default %} <span class="badge text-bg-secondary ms-1">{% trans "default" %}</span>{% endif %}
+              {% if policy.description %}<div class="small text-muted text-wrap">{{ policy.description }}</div>{% endif %}
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </form>
 {% endif %}

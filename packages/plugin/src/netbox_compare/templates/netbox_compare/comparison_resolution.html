@@ -1,0 +1,101 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load i18n %}
+{% load netbox_compare %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_compare:comparison_list' %}?device_id={{ object.device_id }}">{{ object.device }}</a></li>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col col-12">
+    <div class="card">
+      <h2 class="card-header">{% trans "Resolution" %}</h2>
+      <div class="card-body">
+        {% if sections %}
+          <div class="d-flex flex-wrap gap-4 align-items-end">
+            {% for section in sections %}
+              <div>
+                <div class="fs-1 fw-bold text-{{ section.color }}">{{ section.items|length }}</div>
+                <div class="text-muted">{{ section.label }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="mb-0 text-muted">{% trans "No divergence of this comparison has been resolved yet." %}</p>
+        {% endif %}
+        <p class="mt-3 mb-0">
+          <a href="{{ object.get_absolute_url }}" class="btn btn-sm btn-outline-secondary"><i class="mdi mdi-arrow-left"></i> {% trans "Back to the report" %}</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if device_modules %}
+<div class="row mb-3">
+  <div class="col col-12 col-lg-8">
+    <div class="card">
+      <h2 class="card-header">{% trans "Device-side capability" %}</h2>
+      <div class="card-body pb-0 text-muted small">
+        {% blocktrans trimmed with platform=object.device.platform|default:_("(none)") %}
+          Connection modules that declare platform {{ platform }}, and the fields each one can write there. A device fix is possible only for configuration attributes that some module can write.
+        {% endblocktrans %}
+      </div>
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>{% trans "Module" %}</th><th>{% trans "Writable fields" %}</th></tr></thead>
+        <tbody>
+          {% for m in device_modules %}
+            <tr>
+              <td><code>{{ m.name }}</code></td>
+              <td>
+                {% for path in m.writable %}<span class="badge text-bg-secondary">{{ path|field_label }}</span> {% empty %}<span class="text-muted">{% trans "None: this module is read-only on this platform." %}</span>{% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% for section in sections %}
+<div class="row mb-3">
+  <div class="col col-12">
+    <div class="card">
+      <h2 class="card-header">{{ section.label }} <span class="badge text-bg-{{ section.color }}">{{ section.items|length }}</span></h2>
+      {% if section.help %}<div class="card-body pb-0 text-muted small">{{ section.help }}</div>{% endif %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>{% trans "Object" %}</th>
+              <th>{% trans "Field" %}</th>
+              <th>{% trans "Documented (NetBox)" %}</th>
+              <th>{% trans "Observed (device)" %}</th>
+              <th>{% trans "Outcome" %}</th>
+              <th>{% trans "By" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in section.items %}
+              <tr>
+                <td>{% if d.object_key %}<code>{{ d.object_key }}</code>{% else %}{% trans "device" %}{% endif %} <span class="text-muted small">{{ d.get_object_type_display }}</span></td>
+                <td>{% if d.kind == 'field' %}{{ d.field_label }}{% else %}{% badge d.get_kind_display d.get_kind_color %}{% endif %}</td>
+                <td>{% if d.kind == 'undocumented' %}<span class="text-muted fst-italic">{% trans "not documented" %}</span>{% else %}{% canonical_value d.documented d.field %}{% endif %}</td>
+                <td>{% if d.kind == 'missing_on_device' %}<span class="text-muted fst-italic">{% trans "not found on device" %}</span>{% else %}{% canonical_value d.observed d.field %}{% endif %}</td>
+                <td>{{ d.resolution_detail }}</td>
+                <td class="text-nowrap small">{{ d.resolved_by|placeholder }}<br><span class="text-muted">{{ d.resolved_at|isodatetime }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

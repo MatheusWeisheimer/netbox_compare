@@ -30,6 +30,10 @@
         {% if object.error %}
           <tr><th scope="row">{% trans "Error" %}</th><td class="text-danger">{{ object.error }}</td></tr>
         {% endif %}
+        <tr>
+          <th scope="row">{% trans "Policy" %}</th>
+          <td>{% if object.policy %}{{ object.policy|linkify }}{% else %}<span class="text-muted">{% trans "deleted" %}</span>{% endif %}</td>
+        </tr>
         <tr><th scope="row">{% trans "Platform" %}</th><td>{{ object.platform|placeholder }}</td></tr>
         <tr><th scope="row">{% trans "Connection module" %}</th><td>{{ object.connection_module|placeholder }}</td></tr>
         <tr><th scope="row">{% trans "Requested by" %}</th><td>{{ object.requested_by|placeholder }}</td></tr>
@@ -72,11 +76,35 @@
   </div>
 </div>
 
+{% if divergence_groups %}
+<form method="post" action="{% url 'plugins:netbox_compare:comparison_resolve' pk=object.pk %}" id="resolve-form">
+{% csrf_token %}
+{% if can_resolve %}
+<div class="alert alert-info d-flex flex-wrap align-items-center gap-3">
+  <div class="flex-grow-1">
+    <i class="mdi mdi-information-outline"></i>
+    {% blocktrans trimmed %}
+      Choose, for each divergence, whether to fix it in the documentation (NetBox takes the observed value) or on the device (the device takes the documented value), or leave it. Nothing is chosen for you.
+    {% endblocktrans %}
+  </div>
+  <button type="submit" class="btn btn-primary"><i class="mdi mdi-check-all"></i> {% trans "Apply" %}</button>
+</div>
+{% endif %}
 {% for group in divergence_groups %}
 <div class="row mb-3">
   <div class="col col-12">
-    <div class="card">
-      <h2 class="card-header">{{ group.label }} {% trans "divergences" %} <span class="badge text-bg-secondary">{{ group.items|length }}</span></h2>
+    <div class="card" data-resolve-group>
+      <h2 class="card-header d-flex flex-wrap align-items-center gap-2">
+        <span class="flex-grow-1">{{ group.label }} {% trans "divergences" %} <span class="badge text-bg-secondary">{{ group.items|length }}</span></span>
+        {% if can_resolve and group.open %}
+          <span class="small fw-normal text-muted">{% trans "Set all to" %}</span>
+          <span class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-secondary" data-resolve-all="">{% trans "No fix" %}</button>
+            <button type="button" class="btn btn-outline-primary" data-resolve-all="documentation">{% trans "Documentation" %}</button>
+            <button type="button" class="btn btn-outline-purple" data-resolve-all="device">{% trans "Device" %}</button>
+          </span>
+        {% endif %}
+      </h2>
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead>
@@ -87,6 +115,7 @@
               <th>{% trans "Field" %}</th>
               <th>{% trans "Documented (NetBox)" %}</th>
               <th>{% trans "Observed (device)" %}</th>
+              <th>{% trans "Resolution" %}</th>
             </tr>
           </thead>
           <tbody>
@@ -98,6 +127,31 @@
                 <td>{% if d.kind == 'field' %}{{ d.field_label }}{% if d.field_kind == 'config' %} <span class="text-muted small" title="{% trans 'Configuration attribute' %}">({% trans "config" %})</span>{% endif %}{% else %}{{ ''|placeholder }}{% endif %}</td>
                 <td>{% if d.kind == 'undocumented' %}<span class="text-muted fst-italic">{% trans "not documented" %}</span>{% else %}{% canonical_value d.documented d.field %}{% endif %}</td>
                 <td>{% if d.kind == 'missing_on_device' %}<span class="text-muted fst-italic">{% trans "not found on device" %}</span>{% else %}{% canonical_value d.observed d.field %}{% endif %}</td>
+                <td class="text-nowrap">
+                  {% if d.is_settled %}
+                    {% badge d.get_resolution_status_display d.get_resolution_status_color %}
+                    <span class="text-muted small d-block text-wrap" style="max-width: 22rem">{{ d.resolution_detail }}</span>
+                  {% elif can_resolve %}
+                    <div class="btn-group btn-group-sm" role="group" aria-label="{% trans 'Resolution' %}">
+                      <input type="radio" class="btn-check" name="resolution_{{ d.pk }}" id="r{{ d.pk }}-none" value="" autocomplete="off" checked>
+                      <label class="btn btn-outline-secondary" for="r{{ d.pk }}-none">{% trans "No fix" %}</label>
+                      <input type="radio" class="btn-check" name="resolution_{{ d.pk }}" id="r{{ d.pk }}-doc" value="documentation" autocomplete="off">
+                      <label class="btn btn-outline-primary" for="r{{ d.pk }}-doc" title="{% trans 'NetBox takes the observed value' %}">{% trans "Documentation" %}</label>
+                      <input type="radio" class="btn-check" name="resolution_{{ d.pk }}" id="r{{ d.pk }}-dev" value="device" autocomplete="off">
+                      <label class="btn btn-outline-purple" for="r{{ d.pk }}-dev" title="{% trans 'The device takes the documented value' %}">{% trans "Device" %}</label>
+                    </div>
+                    {% if d.resolution_status %}
+                      <span class="small d-block mt-1 text-wrap" style="max-width: 22rem">
+                        {% trans "Last attempt" %}: {% badge d.get_resolution_status_display d.get_resolution_status_color %}
+                        <span class="text-muted">{{ d.resolution_detail }}</span>
+                      </span>
+                    {% endif %}
+                  {% elif d.resolution_status %}
+                    {% badge d.get_resolution_status_display d.get_resolution_status_color %}
+                  {% else %}
+                    {{ ''|placeholder }}
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -107,6 +161,13 @@
   </div>
 </div>
 {% endfor %}
+{% if can_resolve %}
+<div class="mb-3 text-end">
+  <button type="submit" class="btn btn-primary"><i class="mdi mdi-check-all"></i> {% trans "Apply" %}</button>
+</div>
+{% endif %}
+</form>
+{% endif %}
 
 <div class="row mb-3">
   {% if not_comparable %}
@@ -137,7 +198,7 @@
   <div class="col col-12 col-lg-5">
     <div class="card">
       <h2 class="card-header">{% trans "Policy" %}</h2>
-      <div class="card-body pb-0 text-muted small">{% trans "Fields considered in this run. Divergences on other fields are not reported." %}</div>
+      <div class="card-body pb-0 text-muted small">{% trans "Fields considered in this run, as the policy was when it ran. Divergences on other fields are not reported." %}</div>
       <table class="table table-sm table-hover mb-0">
         {% for p in policy_fields %}
           <tr>
@@ -150,4 +211,17 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block javascript %}
+  {{ block.super }}
+  <script>
+    document.querySelectorAll('[data-resolve-all]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var group = button.closest('[data-resolve-group]');
+        group.querySelectorAll('input.btn-check[value="' + button.dataset.resolveAll + '"]')
+          .forEach(function (radio) { radio.checked = true; });
+      });
+    });
+  </script>
 {% endblock %}

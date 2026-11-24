@@ -39,18 +39,18 @@ def _has_field(model, name: str) -> bool:
 # NetBox >= 4.2 keeps MACs in dcim.MACAddress, linked through Interface.primary_mac_address.
 # Before that, Interface had a mac_address column.
 if _has_field(Interface, "primary_mac_address"):
-    _MAC_SOURCE = "primary_mac_address"
+    MAC_SOURCE = "primary_mac_address"
 elif _has_field(Interface, "mac_address"):
-    _MAC_SOURCE = "mac_address"
+    MAC_SOURCE = "mac_address"
 else:
-    _MAC_SOURCE = None
+    MAC_SOURCE = None
 
 
 def _interface_mac(interface) -> Value:
-    if _MAC_SOURCE == "primary_mac_address":
+    if MAC_SOURCE == "primary_mac_address":
         mac = interface.primary_mac_address
         return normalize_mac(str(mac.mac_address)) if mac else None
-    if _MAC_SOURCE == "mac_address":
+    if MAC_SOURCE == "mac_address":
         return normalize_mac(str(interface.mac_address)) if interface.mac_address else None
     return NOT_IN_SCHEMA
 
@@ -71,9 +71,9 @@ def _os_version(device) -> Value:
     return "" if value is None else str(value)
 
 
-def documented_snapshot(device) -> Snapshot:
+def device_record(device) -> DeviceRecord:
     device_type = device.device_type
-    record = DeviceRecord(
+    return DeviceRecord(
         name=device.name,
         manufacturer=device_type.manufacturer.name,
         model=device_type.model,
@@ -81,26 +81,43 @@ def documented_snapshot(device) -> Snapshot:
         os_version=_os_version(device),
     )
 
-    related = [_MAC_SOURCE] if _MAC_SOURCE == "primary_mac_address" else []
+
+def interface_record(iface) -> InterfaceRecord:
+    return InterfaceRecord(
+        name=iface.name,
+        enabled=iface.enabled,
+        description=iface.description,
+        mtu=iface.mtu,
+        speed=iface.speed,
+        mac_address=_interface_mac(iface),
+    )
+
+
+def interfaces_of(device, queryset=None):
+    queryset = Interface.objects.all() if queryset is None else queryset
+    related = [MAC_SOURCE] if MAC_SOURCE == "primary_mac_address" else []
+    return queryset.filter(device=device).select_related(*related)
+
+
+def ip_addresses_of(interface_pks, queryset=None):
+    """IP addresses assigned to the given interfaces, oldest first."""
+    queryset = IPAddress.objects.all() if queryset is None else queryset
+    return queryset.filter(
+        assigned_object_type=ContentType.objects.get_for_model(Interface),
+        assigned_object_id__in=list(interface_pks),
+    ).order_by("pk")
+
+
+def documented_snapshot(device) -> Snapshot:
+    record = device_record(device)
     interfaces = {}
     by_pk = {}
-    for iface in Interface.objects.filter(device=device).select_related(*related):
-        interfaces[iface.name] = InterfaceRecord(
-            name=iface.name,
-            enabled=iface.enabled,
-            description=iface.description,
-            mtu=iface.mtu,
-            speed=iface.speed,
-            mac_address=_interface_mac(iface),
-        )
+    for iface in interfaces_of(device):
+        interfaces[iface.name] = interface_record(iface)
         by_pk[iface.pk] = iface.name
 
     ip_addresses: dict[str, IPAddressRecord] = {}
-    ips = IPAddress.objects.filter(
-        assigned_object_type=ContentType.objects.get_for_model(Interface),
-        assigned_object_id__in=list(by_pk),
-    ).order_by("pk")
-    for ip in ips:
+    for ip in ip_addresses_of(by_pk):
         address = normalize_ip(str(ip.address.ip))
         if address in ip_addresses:
             logger.warning("%s is documented twice on %s; keeping the first", address, device)

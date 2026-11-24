@@ -4,28 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Implemented so far: credentials (Vaultwarden), the canonical model, the connection contract with a NAPALM module, the diff, and per-device comparisons. The device page button ("Compare with device running configuration") queues a background job; the report is stored in NetBox and rendered at `/plugins/compare/comparisons/<id>/` (also a "Comparisons" device tab and a read-only REST API). Not implemented yet: resolve actions, scheduled jobs, notifications, open commands, the modules page, the MCP adapter.
+Implemented:
+- Credentials module (Vaultwarden) and the connection module (NAPALM, tested against a Huawei VRP switch).
+- Canonical model, connection contract and the diff, following the comparison semantics below.
+- Manual comparison of one device: the device page button queues a background job, and the report (documented vs. observed value per divergence, plus not-comparable fields) is stored in NetBox. It is shown at `/plugins/compare/comparisons/<id>/`, in a "Comparisons" device tab, and through a read-only REST API.
+- Comparison policies: stored in NetBox (`ComparisonPolicy`: per canonical field, whether it is compared and its severity, set separately; at most one default), editable in the UI and REST API. Each comparison links its policy and keeps a snapshot of its fields (`policy_fields`). The device button runs the default policy or one picked from its dropdown.
+- Resolution: on the report the administrator picks, per divergence, documentation / device / no fix. Apply writes documentation fixes to NetBox (`documentation_fix.py`); for device fixes it only reports whether a connection module declares write support (`device_fix.py`). Outcomes are in the comparison's "Resolution" tab.
 
-Statements marked **(spec)** come from the project's design text (section 5, "Definições do projeto", in Portuguese) and are requirements. Statements marked **(proposed)** are conventions not yet agreed on; confirm or replace them when the code is written.
+Not implemented yet: device writes (no write method in the connection contract), scheduled jobs, notification modules, open commands, the modules page, the MCP adapter.
+
+Statements marked **(spec)** come from the project's design text (section 5, "Definições do projeto", in Portuguese) and are requirements.
 
 ## Repo layout and commands
 
 uv workspace monorepo; each package is separately installable (hatchling, `src/` layout):
 
-- `packages/core` → `netbox_compare_core`: module contracts (and later the canonical model). No Django/NetBox dependency.
-- `packages/credentials-vaultwarden` → `netbox_compare_vaultwarden`: credentials module. Native Bitwarden client: API-key login, `/api/sync`, local decryption (PBKDF2/Argon2id, AES-CBC+HMAC, RSA-OAEP org keys). Matches the Login item whose name equals the device name; the host is the device's primary IP. Decrypted secrets stay in process memory (TTL cache), never in Django cache or Redis.
-- `packages/connection-napalm` → `netbox_compare_napalm`: connection module. NAPALM getters, read and open-command exec only. Config maps NetBox platform slugs to NAPALM drivers. `fixups.py` corrects per-driver output (huawei_vrp: admin state from `display interface brief`, serial from `display device manufacture-info`, quoted descriptions).
-- `packages/plugin` → `netbox_compare`: the NetBox plugin. It is **not** a workspace member, because it needs NetBox and is only installed into NetBox's venv.
+- `packages/core` → `netbox_compare_core`: canonical model and module contracts. No Django/NetBox dependency.
+- `packages/credentials-vaultwarden` → `netbox_compare_vaultwarden`: credentials module. Matches the Login item named after the device; the host is the device's primary IP. Decrypted secrets stay in process memory only.
+- `packages/connection-napalm` → `netbox_compare_napalm`: connection module. Maps NetBox platform slugs to NAPALM drivers; `fixups.py` corrects per-driver output (e.g. huawei_vrp administrative state).
+- `packages/plugin` → `netbox_compare`: the NetBox plugin. **Not** a workspace member, because it needs NetBox and is only installed into NetBox's venv.
 
 Commands:
 - `uv sync`: dev env for core + modules
-- `uv run pytest`: unit tests (core, vaultwarden, napalm, and the plugin's Django-free modules such as `diff.py`; `packages/plugin/tests/conftest.py` stubs `netbox.plugins`)
+- `uv run pytest`: unit tests, including the plugin's Django-free modules (`diff.py`; `packages/plugin/tests/conftest.py` stubs NetBox)
 - `set -a; . ./.env; set +a; uv run pytest -m live`: tests against the local Vaultwarden
 - `uv run ruff check . && uv run ruff format --check .`
-- `sudo scripts/install-netbox-dev.sh`: editable-install all packages into `/opt/netbox/venv` (root-owned), run the plugin's migrations, and rewrite `PLUGINS_CONFIG` in `/opt/netbox/netbox/netbox/configuration.py` from `contrib/netbox_configuration_snippet.py`. Secrets come from the git-ignored `.env` (see `.env.example`).
-- Local dev environment (outside the repo): NetBox 4.5 at `/opt/netbox` on :8000 (runserver + rqworker, run by the user; restart both after changing entry points or job code), Vaultwarden at `https://localhost:8443` (CA: `~/caddy-root.crt`). Commands that need `sudo` must be run by the user in their own terminal.
+- `sudo scripts/install-netbox-dev.sh`: editable-install all packages into `/opt/netbox/venv`, run the plugin's migrations, and rewrite `PLUGINS_CONFIG` from `contrib/netbox_configuration_snippet.py`. Secrets come from the git-ignored `.env` (see `.env.example`).
+- Local dev environment (outside the repo): NetBox 4.5 at `/opt/netbox` on :8000 (runserver + rqworker, run by the user; restart both after changing entry points or job code), Vaultwarden at `https://localhost:8443` (CA: `~/caddy-root.crt`). Commands that need `sudo` must be run by the user.
 
-Plugin config: `PLUGINS_CONFIG["netbox_compare"]["credentials"]` is an ordered list of `{"module": <entry point name>, "config": {...}}`. The first module that returns credentials wins. A `CredentialsError` is logged and the next module is tried. `connections` has the same shape; a device uses the first module whose `capabilities()` declares its platform slug. `policy` maps canonical field paths (`interface.mtu`) to a severity (default: `netbox_compare.policy.DEFAULT_POLICY`). `os_version_custom_field` names the Device custom field holding the OS version (otherwise `device.os_version` is not comparable).
+Plugin config (`PLUGINS_CONFIG["netbox_compare"]`):
+- `credentials`, `connections`: ordered lists of `{"module": <entry point name>, "config": {...}}`. The first credentials module that resolves the device wins; a device uses the first connection module that declares its platform slug.
+- `os_version_custom_field`: Device custom field holding the OS version (NetBox has no native field).
 
 ## What the project is
 

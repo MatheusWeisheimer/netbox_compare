@@ -1,0 +1,62 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load i18n %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col col-12 col-md-5">
+    <div class="card">
+      <h2 class="card-header">{% trans "Comparison policy" %}</h2>
+      <table class="table table-hover attr-table">
+        <tr><th scope="row">{% trans "Name" %}</th><td>{{ object.name }}</td></tr>
+        <tr><th scope="row">{% trans "Description" %}</th><td>{{ object.description|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Default" %}</th><td>{% checkmark object.is_default %}</td></tr>
+        <tr><th scope="row">{% trans "Fields compared" %}</th><td>{{ object.considered_fields|length }}</td></tr>
+        <tr>
+          <th scope="row">{% trans "Comparisons" %}</th>
+          <td><a href="{% url 'plugins:netbox_compare:comparison_list' %}?policy_id={{ object.pk }}">{{ comparison_count }}</a></td>
+        </tr>
+        <tr><th scope="row">{% trans "Owner" %}</th><td>{{ object.owner|linkify|placeholder }}</td></tr>
+      </table>
+    </div>
+    {% include 'inc/panels/tags.html' %}
+    {% include 'inc/panels/comments.html' %}
+    {% plugin_left_page object %}
+  </div>
+  <div class="col col-12 col-md-7">
+    {% for group in field_groups %}
+      <div class="card">
+        <h2 class="card-header">{{ group.label }}</h2>
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>{% trans "Field" %}</th>
+              <th class="text-center">{% trans "Compared" %}</th>
+              <th class="text-end">{% trans "Severity" %}</th>
+            </tr>
+          </thead>
+          {% for row in group.rows %}
+            <tr{% if not row.enabled %} class="text-muted"{% endif %}>
+              <td>
+                {{ row.label }} <span class="text-muted small">{{ row.path }}</span>
+                {% if not row.key %}<span class="text-muted small">({% if row.kind == 'config' %}{% trans "config" %}{% else %}{% trans "fact" %}{% endif %})</span>{% endif %}
+              </td>
+              <td class="text-center">{% checkmark row.enabled %}</td>
+              <td class="text-end text-nowrap">
+                {% if row.enabled %}{% badge row.severity_label row.color %}{% else %}<span class="small">{{ row.severity_label }}</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+    {% endfor %}
+    {% plugin_right_page object %}
+  </div>
+</div>
+<div class="row">
+  <div class="col col-md-12">
+    {% plugin_full_width_page object %}
+  </div>
+</div>
+{% endblock %}

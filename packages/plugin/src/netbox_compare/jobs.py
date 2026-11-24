@@ -13,13 +13,15 @@ class CompareDeviceJob(JobRunner):
         name = "Device comparison"
 
     def run(self, comparison_id, *args, **kwargs):
-        comparison = Comparison.objects.select_related("device__platform").get(pk=comparison_id)
+        comparison = Comparison.objects.select_related("device__platform", "policy").get(
+            pk=comparison_id
+        )
         run_comparison(comparison, log=self.logger)
 
 
 @transaction.atomic
-def enqueue_comparison(device, user) -> Comparison:
-    comparison = Comparison(device=device, requested_by=user)
+def enqueue_comparison(device, user, policy) -> Comparison:
+    comparison = Comparison(device=device, requested_by=user, policy=policy)
     comparison.full_clean()
     comparison.save()
     # NetBox only attaches jobs to models with the `jobs` feature (JobsMixin); Device has none,

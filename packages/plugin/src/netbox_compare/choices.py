@@ -54,3 +54,32 @@ class DivergenceKindChoices(ChoiceSet):
         (UNDOCUMENTED, _("Only on device"), "purple"),
         (MISSING_ON_DEVICE, _("Missing on device"), "red"),
     )
+
+
+class ResolutionChoices(ChoiceSet):
+    """Where the administrator chose to fix a divergence. Blank: no fix chosen."""
+
+    DOCUMENTATION = "documentation"
+    DEVICE = "device"
+
+    CHOICES = (
+        (DOCUMENTATION, _("Fix in documentation"), "blue"),
+        (DEVICE, _("Fix on device"), "purple"),
+    )
+
+
+class ResolutionStatusChoices(ChoiceSet):
+    APPLIED = "applied"  # NetBox was updated
+    FAILED = "failed"  # the documentation fix could not be applied
+    DEVICE_POSSIBLE = "device_possible"  # a connection module declares write support
+    DEVICE_IMPOSSIBLE = "device_impossible"  # no connection module can write it
+
+    CHOICES = (
+        (APPLIED, _("Applied"), "green"),
+        (FAILED, _("Failed"), "red"),
+        (DEVICE_POSSIBLE, _("Possible on device"), "cyan"),
+        (DEVICE_IMPOSSIBLE, _("Not possible on device"), "orange"),
+    )
+
+    # A divergence in one of these states is settled and can no longer be resolved.
+    FINAL = (APPLIED,)

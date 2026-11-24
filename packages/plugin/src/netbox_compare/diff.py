@@ -73,7 +73,7 @@ def natural_key(value: str) -> list[Any]:
     return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", value)]
 
 
-def _same(a: Any, b: Any) -> bool:
+def same_value(a: Any, b: Any) -> bool:
     # bool is an int subclass: keep True distinct from 1.
     return a == b and isinstance(a, bool) == isinstance(b, bool)
 
@@ -117,7 +117,7 @@ def compare(
                 else unavailable_reason([spec.path], doc)
             )
             pending[(spec.path, reason)].append(key)
-        elif _same(doc, obs):
+        elif same_value(doc, obs):
             result.matches += 1
         else:
             result.divergences.append(
