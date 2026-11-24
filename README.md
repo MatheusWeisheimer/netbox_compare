@@ -27,7 +27,7 @@ Os pacotes não estão publicados no PyPI. Eles são instalados a partir deste r
 ### 1. Obter o código
 
 ```bash
-sudo git clone <url-do-repositorio> /opt/netbox-compare
+sudo git clone https://github.com/MatheusWeisheimer/netbox_compare.git /opt/netbox-compare
 ```
 
 ### 2. Instalar os pacotes no venv do NetBox
