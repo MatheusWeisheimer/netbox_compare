@@ -1,0 +1,41 @@
+[project]
+name = "netbox-compare-workspace"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "netbox-compare-core",
+    "netbox-compare-vaultwarden",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/core", "packages/credentials-vaultwarden"]
+
+[tool.uv.sources]
+netbox-compare-core = { workspace = true }
+netbox-compare-vaultwarden = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S105", "S106"]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not live' --import-mode=importlib"
+pythonpath = ["packages/credentials-vaultwarden/tests"]
+markers = ["live: needs a running Vaultwarden and NBC_VW_* env vars"]
+testpaths = ["packages/core/tests", "packages/credentials-vaultwarden/tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["netbox_compare", "netbox_compare_core", "netbox_compare_vaultwarden", "vaultfixtures"]
