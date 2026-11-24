@@ -1,0 +1,153 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load i18n %}
+{% load netbox_compare %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_compare:comparison_list' %}?device_id={{ object.device_id }}">{{ object.device }}</a></li>
+{% endblock %}
+
+{% block head %}
+  {{ block.super }}
+  {% if not object.is_final %}<meta http-equiv="refresh" content="3">{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col col-12 col-md-5">
+    <div class="card">
+      <h2 class="card-header">{% trans "Comparison" %}</h2>
+      <table class="table table-hover attr-table">
+        <tr><th scope="row">{% trans "Device" %}</th><td>{{ object.device|linkify }}</td></tr>
+        <tr>
+          <th scope="row">{% trans "Status" %}</th>
+          <td>
+            {% badge object.get_status_display object.get_status_color %}
+            {% if not object.is_final %}<span class="text-muted small ms-2"><span class="spinner-border spinner-border-sm"></span> {% trans "refreshing" %}</span>{% endif %}
+          </td>
+        </tr>
+        {% if object.error %}
+          <tr><th scope="row">{% trans "Error" %}</th><td class="text-danger">{{ object.error }}</td></tr>
+        {% endif %}
+        <tr><th scope="row">{% trans "Platform" %}</th><td>{{ object.platform|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Connection module" %}</th><td>{{ object.connection_module|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Requested by" %}</th><td>{{ object.requested_by|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Started" %}</th><td>{{ object.started|isodatetime|placeholder }}</td></tr>
+        <tr>
+          <th scope="row">{% trans "Completed" %}</th>
+          <td>{{ object.completed|isodatetime|placeholder }}{% if object.duration %} <span class="text-muted">({{ object.duration.total_seconds|floatformat:1 }} s)</span>{% endif %}</td>
+        </tr>
+        <tr><th scope="row">{% trans "Job" %}</th><td>{% if object.job %}<a href="{{ object.job.get_absolute_url }}">{{ object.job }}</a>{% else %}{{ ''|placeholder }}{% endif %}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col col-12 col-md-7">
+    <div class="card">
+      <h2 class="card-header">{% trans "Summary" %}</h2>
+      {% if object.status == 'completed' %}
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-4 align-items-end">
+            <div><div class="fs-1 fw-bold {% if object.divergence_count %}text-danger{% else %}text-success{% endif %}">{{ object.divergence_count }}</div><div class="text-muted">{% trans "Divergences" %}</div></div>
+            <div><div class="fs-1 fw-bold">{{ object.match_count }}</div><div class="text-muted">{% trans "Matches" %}</div></div>
+            <div><div class="fs-1 fw-bold text-secondary">{{ not_comparable|length }}</div><div class="text-muted">{% trans "Fields not comparable" %}</div></div>
+          </div>
+          {% if severity_counts %}
+            <div class="mt-3">
+              {% for label, count, color in severity_counts %}
+                <span class="badge text-bg-{{ color }}">{{ label }}: {{ count }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if not object.divergence_count %}
+            <p class="mt-3 mb-0 text-success"><i class="mdi mdi-check-circle"></i> {% trans "The documentation matches the device for every field the policy considers." %}</p>
+          {% endif %}
+        </div>
+      {% elif object.status == 'failed' %}
+        <div class="card-body text-danger">{% trans "The comparison failed; no report was produced." %}</div>
+      {% else %}
+        <div class="card-body text-muted">{% trans "Waiting for the device to answer…" %}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% for group in divergence_groups %}
+<div class="row mb-3">
+  <div class="col col-12">
+    <div class="card">
+      <h2 class="card-header">{{ group.label }} {% trans "divergences" %} <span class="badge text-bg-secondary">{{ group.items|length }}</span></h2>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>{% trans "Severity" %}</th>
+              {% if group.object_type != 'device' %}<th>{% trans "Object" %}</th>{% endif %}
+              <th>{% trans "Divergence" %}</th>
+              <th>{% trans "Field" %}</th>
+              <th>{% trans "Documented (NetBox)" %}</th>
+              <th>{% trans "Observed (device)" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in group.items %}
+              <tr>
+                <td>{% badge d.get_severity_display d.get_severity_color %}</td>
+                {% if group.object_type != 'device' %}<td><code>{{ d.object_key }}</code></td>{% endif %}
+                <td>{% badge d.get_kind_display d.get_kind_color %}</td>
+                <td>{% if d.kind == 'field' %}{{ d.field_label }}{% if d.field_kind == 'config' %} <span class="text-muted small" title="{% trans 'Configuration attribute' %}">({% trans "config" %})</span>{% endif %}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                <td>{% if d.kind == 'undocumented' %}<span class="text-muted fst-italic">{% trans "not documented" %}</span>{% else %}{% canonical_value d.documented d.field %}{% endif %}</td>
+                <td>{% if d.kind == 'missing_on_device' %}<span class="text-muted fst-italic">{% trans "not found on device" %}</span>{% else %}{% canonical_value d.observed d.field %}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="row mb-3">
+  {% if not_comparable %}
+  <div class="col col-12 col-lg-7">
+    <div class="card">
+      <h2 class="card-header">{% trans "Not comparable" %}</h2>
+      <div class="card-body pb-0 text-muted small">{% trans "Neither a match nor a divergence: one side has no value to compare." %}</div>
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>{% trans "Field" %}</th><th>{% trans "Reason" %}</th><th>{% trans "Objects" %}</th></tr></thead>
+        <tbody>
+          {% for nc in not_comparable %}
+            <tr>
+              <td>{{ nc.label }} <span class="text-muted small">{{ nc.object_type }}</span></td>
+              <td>{{ nc.reason_label }}</td>
+              <td>
+                {% if nc.keys %}
+                  <details><summary>{{ nc.keys|length }}</summary><span class="small">{{ nc.keys|join:", " }}</span></details>
+                {% elif nc.object_type == 'device' %}{% trans "device" %}{% else %}{% trans "all" %}{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% if policy_fields %}
+  <div class="col col-12 col-lg-5">
+    <div class="card">
+      <h2 class="card-header">{% trans "Policy" %}</h2>
+      <div class="card-body pb-0 text-muted small">{% trans "Fields considered in this run. Divergences on other fields are not reported." %}</div>
+      <table class="table table-sm table-hover mb-0">
+        {% for p in policy_fields %}
+          <tr>
+            <td>{{ p.field|field_label }} <span class="text-muted small">{{ p.field }}</span></td>
+            <td class="text-end"><span class="text-uppercase small fw-semibold">{{ p.severity }}</span></td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

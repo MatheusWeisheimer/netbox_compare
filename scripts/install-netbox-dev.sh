@@ -14,6 +14,7 @@ CONF="$NETBOX/netbox/netbox/configuration.py"
 "$PIP" install \
     -e "$REPO/packages/core" \
     -e "$REPO/packages/credentials-vaultwarden" \
+    -e "$REPO/packages/connection-napalm[vrp]" \
     -e "$REPO/packages/plugin"
 
 # Replace the PLUGINS_CONFIG block (from "PLUGINS_CONFIG = {" to the next "}" at column 0).
@@ -35,4 +36,5 @@ open(conf_path, "w").write(conf)
 PY
 
 grep -q '"netbox_compare"' "$CONF" || echo 'WARNING: add "netbox_compare" to PLUGINS in' "$CONF"
-echo "Done. Fill in $REPO/.env (see .env.example; single-quote values with special characters), then restart NetBox."
+sudo -u "${SUDO_USER:-root}" "$NETBOX/venv/bin/python" "$NETBOX/netbox/manage.py" migrate netbox_compare
+echo "Done. Fill in $REPO/.env (see .env.example; single-quote values with special characters), then restart NetBox and its rqworker."

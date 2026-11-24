@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "netbox-compare-core",
     "netbox-compare-vaultwarden",
+    "netbox-compare-napalm",
 ]
 
 [dependency-groups]
@@ -14,15 +15,17 @@ dev = ["pytest>=8", "ruff>=0.6"]
 package = false
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/credentials-vaultwarden"]
+members = ["packages/core", "packages/credentials-vaultwarden", "packages/connection-napalm"]
 
 [tool.uv.sources]
 netbox-compare-core = { workspace = true }
 netbox-compare-vaultwarden = { workspace = true }
+netbox-compare-napalm = { workspace = true }
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["**/migrations/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S"]
@@ -33,9 +36,20 @@ ignore = ["S101"]
 
 [tool.pytest.ini_options]
 addopts = "-m 'not live' --import-mode=importlib"
-pythonpath = ["packages/credentials-vaultwarden/tests"]
+pythonpath = ["packages/credentials-vaultwarden/tests", "packages/plugin/src"]
 markers = ["live: needs a running Vaultwarden and NBC_VW_* env vars"]
-testpaths = ["packages/core/tests", "packages/credentials-vaultwarden/tests"]
+testpaths = [
+    "packages/core/tests",
+    "packages/credentials-vaultwarden/tests",
+    "packages/connection-napalm/tests",
+    "packages/plugin/tests",
+]
 
 [tool.ruff.lint.isort]
-known-first-party = ["netbox_compare", "netbox_compare_core", "netbox_compare_vaultwarden", "vaultfixtures"]
+known-first-party = [
+    "netbox_compare",
+    "netbox_compare_core",
+    "netbox_compare_napalm",
+    "netbox_compare_vaultwarden",
+    "vaultfixtures",
+]

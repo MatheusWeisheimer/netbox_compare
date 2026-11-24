@@ -1,0 +1,22 @@
+[project]
+name = "netbox-compare-napalm"
+version = "0.1.0"
+description = "netbox-compare connection module backed by NAPALM (read and open-command exec only)"
+requires-python = ">=3.12"
+dependencies = [
+    "netbox-compare-core",
+    "napalm>=5",
+]
+
+[project.optional-dependencies]
+vrp = ["napalm-huawei-vrp>=1.2"]
+
+[project.entry-points."netbox_compare.connections"]
+napalm = "netbox_compare_napalm.module:NapalmModule"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/netbox_compare_napalm"]

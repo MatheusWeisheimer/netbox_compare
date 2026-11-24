@@ -30,6 +30,16 @@ PLUGINS_CONFIG = {
                 },
             },
         ],
+        "connections": [
+            {
+                "module": "napalm",
+                "config": {
+                    "platforms": {
+                        "huawei-vrp": {"driver": "huawei_vrp", "timeout": 60},
+                    },
+                },
+            },
+        ],
     },
 }
 # --- end netbox-compare ---------------------------------------------------------------------

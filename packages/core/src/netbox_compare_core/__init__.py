@@ -1,3 +1,27 @@
+from netbox_compare_core.canonical import (
+    ALL_FIELDS,
+    FIELDS,
+    NOT_IN_SCHEMA,
+    NOT_OBSERVED,
+    DeviceRecord,
+    FieldKind,
+    FieldSpec,
+    InterfaceRecord,
+    IPAddressRecord,
+    ObjectType,
+    Snapshot,
+    Unavailable,
+    Value,
+    is_available,
+    normalize_ip,
+    normalize_mac,
+)
+from netbox_compare_core.connection import (
+    ConnectionModule,
+    ConnectionModuleError,
+    PlatformCapabilities,
+    Session,
+)
 from netbox_compare_core.credentials import (
     AmbiguousCredentials,
     Credentials,
@@ -7,9 +31,29 @@ from netbox_compare_core.credentials import (
 )
 
 __all__ = [
+    "ALL_FIELDS",
+    "FIELDS",
+    "NOT_IN_SCHEMA",
+    "NOT_OBSERVED",
     "AmbiguousCredentials",
+    "ConnectionModule",
+    "ConnectionModuleError",
     "Credentials",
     "CredentialsError",
     "CredentialsProvider",
     "DeviceIdentity",
+    "DeviceRecord",
+    "FieldKind",
+    "FieldSpec",
+    "IPAddressRecord",
+    "InterfaceRecord",
+    "ObjectType",
+    "PlatformCapabilities",
+    "Session",
+    "Snapshot",
+    "Unavailable",
+    "Value",
+    "is_available",
+    "normalize_ip",
+    "normalize_mac",
 ]

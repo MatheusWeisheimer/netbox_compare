@@ -1,3 +1,14 @@
-<button type="button" class="btn btn-primary" disabled title="Not implemented yet">
-  <i class="mdi mdi-compare-horizontal"></i> Compare with device running configuration
-</button>
+{% load i18n %}
+{% if supported %}
+  <form action="{{ compare_url }}" method="post" class="d-inline">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">
+      <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
+    </button>
+  </form>
+{% else %}
+  <button type="button" class="btn btn-primary" disabled
+          title="{% blocktrans with platform=platform|default:_('(none)') %}No connection module declares platform {{ platform }}{% endblocktrans %}">
+    <i class="mdi mdi-compare-horizontal"></i> {% trans "Compare with device running configuration" %}
+  </button>
+{% endif %}
