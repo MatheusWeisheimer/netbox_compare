@@ -3,7 +3,7 @@
 import os as _os
 from pathlib import Path as _Path
 
-_NBC_ENV = _Path("/caminho/para/netbox_compare/.env")
+_NBC_ENV = _Path("/caminho/para/netbox_compare/.env")  # ajuste para o seu clone
 if _NBC_ENV.is_file():
     for _line in _NBC_ENV.read_text().splitlines():
         _line = _line.strip()
@@ -26,7 +26,7 @@ PLUGINS_CONFIG = {
                     "client_secret": _os.environ.get("NBC_VW_CLIENT_SECRET", ""),
                     "email": _os.environ.get("NBC_VW_EMAIL", ""),
                     "master_password": _os.environ.get("NBC_VW_MASTER_PASSWORD", ""),
-                    "verify": _os.environ.get("NBC_VW_VERIFY", "/caminho/para/ca.crt"),
+                    "verify": _os.environ.get("NBC_VW_VERIFY", True),
                 },
             },
         ],
