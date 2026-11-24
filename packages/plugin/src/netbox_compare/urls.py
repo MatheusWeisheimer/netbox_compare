@@ -13,6 +13,27 @@ urlpatterns = [
         include(get_model_urls("netbox_compare", "comparisonpolicy")),
     ),
     path(
+        "schedules/",
+        include(get_model_urls("netbox_compare", "comparisonschedule", detail=False)),
+    ),
+    path(
+        "schedules/<int:pk>/",
+        include(get_model_urls("netbox_compare", "comparisonschedule")),
+    ),
+    path(
+        "schedules/<int:pk>/run/",
+        views.ComparisonScheduleRunView.as_view(),
+        name="comparisonschedule_run",
+    ),
+    path(
+        "runs/",
+        include(get_model_urls("netbox_compare", "comparisonrun", detail=False)),
+    ),
+    path(
+        "runs/<int:pk>/",
+        include(get_model_urls("netbox_compare", "comparisonrun")),
+    ),
+    path(
         "comparisons/",
         include(get_model_urls("netbox_compare", "comparison", detail=False)),
     ),

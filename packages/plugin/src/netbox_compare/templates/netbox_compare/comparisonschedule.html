@@ -1,0 +1,116 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load plugins %}
+{% load i18n %}
+
+{% block extra_controls %}
+  {% if can_run %}
+    <form action="{% url 'plugins:netbox_compare:comparisonschedule_run' pk=object.pk %}" method="post" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary" title="{% trans 'Run the job now, outside its timing' %}">
+        <i class="mdi mdi-play"></i> {% trans "Run now" %}
+      </button>
+    </form>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col col-12 col-md-5">
+    <div class="card">
+      <h2 class="card-header">{% trans "Scheduled job" %}</h2>
+      <table class="table table-hover attr-table">
+        <tr><th scope="row">{% trans "Name" %}</th><td>{{ object.name }}</td></tr>
+        <tr><th scope="row">{% trans "Description" %}</th><td>{{ object.description|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Enabled" %}</th><td>{% checkmark object.enabled %}</td></tr>
+        <tr><th scope="row">{% trans "Policy" %}</th><td>{{ object.policy|linkify }}</td></tr>
+        <tr><th scope="row">{% trans "First run" %}</th><td>{{ object.start_time|isodatetime }}</td></tr>
+        <tr><th scope="row">{% trans "Repeats" %}</th><td>{{ object.get_recurrence_display }}</td></tr>
+        <tr>
+          <th scope="row">{% trans "Next run" %}</th>
+          <td>
+            {% if not object.enabled %}
+              <span class="text-muted">{% trans "disabled" %}</span>
+            {% elif next_job %}
+              <a href="{{ next_job.get_absolute_url }}">{{ next_job.scheduled|isodatetime }}</a>
+            {% elif not next_run %}
+              <span class="text-muted">{% trans "none (does not repeat)" %}</span>
+            {% else %}
+              <span class="text-warning">{% trans "not queued" %}</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{% trans "Results" %}</th>
+          <td><a href="{% url 'plugins:netbox_compare:comparisonrun_list' %}?schedule_id={{ object.pk }}">{{ run_count }}</a></td>
+        </tr>
+        <tr><th scope="row">{% trans "Owner" %}</th><td>{{ object.owner|linkify|placeholder }}</td></tr>
+      </table>
+    </div>
+    {% include 'inc/panels/tags.html' %}
+    {% include 'inc/panels/comments.html' %}
+    {% plugin_left_page object %}
+  </div>
+  <div class="col col-12 col-md-7">
+    <div class="card">
+      <h2 class="card-header">{% trans "Devices" %}</h2>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          {% blocktrans trimmed count counter=target_count %}
+            {{ counter }} device is selected right now.
+          {% plural %}
+            {{ counter }} devices are selected right now.
+          {% endblocktrans %}
+          {% trans "Each run selects them again, then compares those whose platform has a connection module and whose credentials can be resolved. The others are listed in the run as skipped." %}
+        </p>
+        <h3 class="h6">{% trans "Device tags" %}</h3>
+        <div class="mb-3">
+          {% for tag in device_tags %}
+            {% tag tag 'dcim:device_list' %}
+          {% empty %}
+            <span class="text-muted">{% trans "None" %}</span>
+          {% endfor %}
+        </div>
+        <h3 class="h6">{% trans "Devices chosen individually" %}</h3>
+        <div>
+          {% for device in devices %}
+            <a href="{{ device.get_absolute_url }}" class="badge text-bg-light border me-1 mb-1">{{ device }}</a>
+          {% empty %}
+            <span class="text-muted">{% trans "None" %}</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="card-header">{% trans "Recent results" %}</h2>
+      {% if recent_runs %}
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>{% trans "Result" %}</th>
+              <th>{% trans "Started" %}</th>
+              <th class="text-end">{% trans "Devices" %}</th>
+              <th class="text-end">{% trans "Failed" %}</th>
+              <th class="text-end">{% trans "Skipped" %}</th>
+              <th class="text-end">{% trans "Divergences" %}</th>
+            </tr>
+          </thead>
+          {% for run in recent_runs %}
+            <tr>
+              <td><a href="{{ run.get_absolute_url }}">#{{ run.pk }}</a>{% if run.unfinished_count %} <span class="spinner-border spinner-border-sm text-muted" title="{% trans 'In progress' %}"></span>{% endif %}</td>
+              <td>{{ run.created|isodatetime }}{% if run.requested_by %} <span class="text-muted small">({{ run.requested_by }})</span>{% endif %}</td>
+              <td class="text-end">{{ run.device_count }}</td>
+              <td class="text-end{% if run.failed_count %} text-danger{% endif %}">{{ run.failed_count }}</td>
+              <td class="text-end{% if run.skipped %} text-warning{% endif %}">{{ run.skipped|length }}</td>
+              <td class="text-end fw-semibold{% if run.divergence_total %} text-danger{% endif %}">{{ run.divergence_total }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% else %}
+        <div class="card-body text-muted">{% trans "No results yet." %}</div>
+      {% endif %}
+    </div>
+    {% plugin_right_page object %}
+  </div>
+</div>
+{% endblock %}

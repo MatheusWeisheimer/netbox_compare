@@ -1,0 +1,191 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+{% load i18n %}
+{% load netbox_compare %}
+
+{% block breadcrumbs %}
+  {{ block.super }}
+  {% if object.schedule %}
+    <li class="breadcrumb-item"><a href="{% url 'plugins:netbox_compare:comparisonrun_list' %}?schedule_id={{ object.schedule_id }}">{{ object.schedule }}</a></li>
+  {% endif %}
+{% endblock %}
+
+{% block head %}
+  {{ block.super }}
+  {% if status != 'completed' %}<meta http-equiv="refresh" content="5">{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+  <div class="col col-12 col-md-5">
+    <div class="card">
+      <h2 class="card-header">{% trans "Scheduled job result" %}</h2>
+      <table class="table table-hover attr-table">
+        <tr>
+          <th scope="row">{% trans "Scheduled job" %}</th>
+          <td>{% if object.schedule %}{{ object.schedule|linkify }}{% else %}{{ object.name }} <span class="text-muted">({% trans "deleted" %})</span>{% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">{% trans "Status" %}</th>
+          <td>
+            {% badge status_label status_color %}
+            {% if status != 'completed' %}<span class="text-muted small ms-2"><span class="spinner-border spinner-border-sm"></span> {% blocktrans with n=unfinished_count %}{{ n }} devices left{% endblocktrans %}</span>{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">{% trans "Policy" %}</th>
+          <td>{% if object.policy %}{{ object.policy|linkify }}{% else %}<span class="text-muted">{% trans "deleted" %}</span>{% endif %}</td>
+        </tr>
+        <tr>
+          <th scope="row">{% trans "Started by" %}</th>
+          <td>{% if object.requested_by %}{{ object.requested_by }} <span class="text-muted">({% trans "run now" %})</span>{% else %}{% trans "Timing" %}{% endif %}</td>
+        </tr>
+        <tr><th scope="row">{% trans "Started" %}</th><td>{{ object.created|isodatetime }}</td></tr>
+        <tr><th scope="row">{% trans "Completed" %}</th><td>{{ completed|isodatetime|placeholder }}</td></tr>
+        <tr><th scope="row">{% trans "Job" %}</th><td>{% if object.job %}<a href="{{ object.job.get_absolute_url }}">{{ object.job }}</a>{% else %}{{ ''|placeholder }}{% endif %}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col col-12 col-md-7">
+    <div class="card">
+      <h2 class="card-header">{% trans "Summary" %}</h2>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-4 align-items-end">
+          <div><div class="fs-1 fw-bold {% if divergence_total %}text-danger{% else %}text-success{% endif %}">{{ divergence_total }}</div><div class="text-muted">{% trans "Divergences" %}</div></div>
+          <div><div class="fs-1 fw-bold">{{ comparisons|length }}</div><div class="text-muted">{% trans "Devices compared" %}</div></div>
+          <div><div class="fs-1 fw-bold {% if divergent_count %}text-danger{% endif %}">{{ divergent_count }}</div><div class="text-muted">{% trans "With divergences" %}</div></div>
+          <div><div class="fs-1 fw-bold text-success">{{ clean_count }}</div><div class="text-muted">{% trans "In agreement" %}</div></div>
+          <div><div class="fs-1 fw-bold {% if failed_count %}text-danger{% else %}text-secondary{% endif %}">{{ failed_count }}</div><div class="text-muted">{% trans "Failed" %}</div></div>
+          <div><div class="fs-1 fw-bold {% if skipped %}text-warning{% else %}text-secondary{% endif %}">{{ skipped|length }}</div><div class="text-muted">{% trans "Skipped" %}</div></div>
+        </div>
+        {% if severity_counts %}
+          <div class="mt-3">
+            {% for label, count, color in severity_counts %}
+              <span class="badge text-bg-{{ color }}">{{ label }}: {{ count }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <p class="mt-3 mb-0 text-muted small">
+          {% trans "Runs only detect and report. To fix a divergence, open the device's report and choose a resolution there." %}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if comparisons %}
+<div class="row mb-3">
+  <div class="col col-12">
+    <div class="card">
+      <h2 class="card-header">{% trans "Devices" %}</h2>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>{% trans "Device" %}</th>
+              <th>{% trans "Status" %}</th>
+              <th class="text-end">{% trans "Divergences" %}</th>
+              <th class="text-end">{% trans "Matches" %}</th>
+              <th class="text-end">{% trans "Not comparable" %}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in comparisons %}
+              <tr>
+                <td>{% if c.divergence_count or c.status == 'failed' %}<a href="#device-{{ c.pk }}">{{ c.device }}</a>{% else %}{{ c.device }}{% endif %}</td>
+                <td>{% badge c.get_status_display c.get_status_color %}</td>
+                <td class="text-end fw-semibold{% if c.divergence_count %} text-danger{% endif %}">{% if c.status == 'completed' %}{{ c.divergence_count }}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                <td class="text-end">{% if c.status == 'completed' %}{{ c.match_count }}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                <td class="text-end text-secondary">{% if c.status == 'completed' %}{{ c.not_comparable|length }}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                <td class="text-end"><a href="{{ c.get_absolute_url }}" class="btn btn-sm btn-outline-secondary">{% trans "Report" %}</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% for c in comparisons %}
+  {% if c.divergence_count or c.status == 'failed' %}
+  <div class="row mb-3" id="device-{{ c.pk }}">
+    <div class="col col-12">
+      <div class="card">
+        <h2 class="card-header d-flex flex-wrap align-items-center gap-2">
+          <span class="flex-grow-1">
+            <a href="{{ c.device.get_absolute_url }}">{{ c.device }}</a>
+            {% if c.status == 'failed' %}
+              {% badge c.get_status_display c.get_status_color %}
+            {% else %}
+              <span class="badge text-bg-secondary">{{ c.divergence_count }}</span>
+            {% endif %}
+          </span>
+          <a href="{{ c.get_absolute_url }}" class="btn btn-sm btn-primary"><i class="mdi mdi-check-all"></i> {% trans "Resolve" %}</a>
+        </h2>
+        {% if c.status == 'failed' %}
+          <div class="card-body text-danger">{{ c.error }}</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>{% trans "Severity" %}</th>
+                  <th>{% trans "Object" %}</th>
+                  <th>{% trans "Divergence" %}</th>
+                  <th>{% trans "Field" %}</th>
+                  <th>{% trans "Documented (NetBox)" %}</th>
+                  <th>{% trans "Observed (device)" %}</th>
+                  <th>{% trans "Resolution" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for d in c.sorted_divergences %}
+                  <tr>
+                    <td>{% badge d.get_severity_display d.get_severity_color %}</td>
+                    <td>{% if d.object_type == 'device' %}<span class="text-muted">{% trans "Device" %}</span>{% else %}{{ d.get_object_type_display }} <code>{{ d.object_key }}</code>{% endif %}</td>
+                    <td>{% badge d.get_kind_display d.get_kind_color %}</td>
+                    <td>{% if d.kind == 'field' %}{{ d.field_label }}{% if d.field_kind == 'config' %} <span class="text-muted small" title="{% trans 'Configuration attribute' %}">({% trans "config" %})</span>{% endif %}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                    <td>{% if d.kind == 'undocumented' %}<span class="text-muted fst-italic">{% trans "not documented" %}</span>{% else %}{% canonical_value d.documented d.field %}{% endif %}</td>
+                    <td>{% if d.kind == 'missing_on_device' %}<span class="text-muted fst-italic">{% trans "not found on device" %}</span>{% else %}{% canonical_value d.observed d.field %}{% endif %}</td>
+                    <td>{% if d.resolution_status %}{% badge d.get_resolution_status_display d.get_resolution_status_color %}{% else %}{{ ''|placeholder }}{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% if skipped %}
+<div class="row mb-3">
+  <div class="col col-12 col-lg-7">
+    <div class="card">
+      <h2 class="card-header">{% trans "Skipped devices" %} <span class="badge text-bg-warning">{{ skipped|length }}</span></h2>
+      <div class="card-body pb-0 text-muted small">{% trans "Selected by the scheduled job but not compared in this run." %}</div>
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>{% trans "Device" %}</th><th>{% trans "Reason" %}</th></tr></thead>
+        <tbody>
+          {% for s in skipped %}
+            <tr>
+              <td>{% if s.object %}{{ s.object|linkify }}{% else %}{{ s.name }} <span class="text-muted small">({% trans "deleted" %})</span>{% endif %}</td>
+              <td>{{ s.reason_label }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if not comparisons and not skipped %}
+  <div class="alert alert-warning">{% trans "The scheduled job selected no devices for this run." %}</div>
+{% endif %}
+{% endblock %}

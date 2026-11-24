@@ -25,8 +25,16 @@ from netbox_compare.choices import (
     ObjectTypeChoices,
     ResolutionStatusChoices,
     SeverityChoices,
+    SkipReasonChoices,
 )
-from netbox_compare.models import Comparison, ComparisonPolicy
+from netbox_compare.models import (
+    Comparison,
+    ComparisonPolicy,
+    ComparisonRun,
+    ComparisonSchedule,
+    run_status,
+    with_run_counts,
+)
 from netbox_compare.modules import connection_for_platform
 from netbox_compare.policy import default_policy
 from netbox_compare_core import FIELDS
@@ -104,13 +112,188 @@ class ComparisonPolicyBulkDeleteView(generic.BulkDeleteView):
 
 
 #
+# Comparison schedules
+#
+
+
+@register_model_view(ComparisonSchedule, "list", path="", detail=False)
+class ComparisonScheduleListView(generic.ObjectListView):
+    queryset = ComparisonSchedule.objects.select_related("policy").annotate(run_count=Count("runs"))
+    table = tables.ComparisonScheduleTable
+    filterset = filtersets.ComparisonScheduleFilterSet
+    filterset_form = forms.ComparisonScheduleFilterForm
+    actions = (AddObject, BulkExport, BulkDelete)
+
+
+@register_model_view(ComparisonSchedule)
+class ComparisonScheduleView(generic.ObjectView):
+    queryset = ComparisonSchedule.objects.select_related("policy")
+    actions = (CloneObject, EditObject, DeleteObject)
+
+    def get_extra_context(self, request, instance):
+        from netbox_compare.jobs import next_scheduled_job
+
+        runs = with_run_counts(
+            ComparisonRun.objects.restrict(request.user, "view").filter(schedule=instance)
+        )
+        job = next_scheduled_job(instance) if instance.enabled else None
+        return {
+            "next_job": job,
+            "next_run": instance.next_run() if instance.enabled else None,
+            "target_count": instance.target_devices().count(),
+            "devices": instance.devices.order_by("name"),
+            "device_tags": instance.device_tags.all(),
+            "recent_runs": runs[:10],
+            "run_count": runs.count(),
+            "can_run": request.user.has_perm("netbox_compare.add_comparison"),
+        }
+
+
+@register_model_view(ComparisonSchedule, "add", detail=False)
+@register_model_view(ComparisonSchedule, "edit")
+class ComparisonScheduleEditView(generic.ObjectEditView):
+    queryset = ComparisonSchedule.objects.all()
+    form = forms.ComparisonScheduleForm
+
+
+@register_model_view(ComparisonSchedule, "delete")
+class ComparisonScheduleDeleteView(generic.ObjectDeleteView):
+    queryset = ComparisonSchedule.objects.all()
+
+
+@register_model_view(ComparisonSchedule, "bulk_delete", path="delete", detail=False)
+class ComparisonScheduleBulkDeleteView(generic.BulkDeleteView):
+    queryset = ComparisonSchedule.objects.annotate(run_count=Count("runs"))
+    filterset = filtersets.ComparisonScheduleFilterSet
+    table = tables.ComparisonScheduleTable
+
+
+class ComparisonScheduleRunView(LoginRequiredMixin, View):
+    """Start a run of a schedule now, outside its timing (POST only)."""
+
+    def post(self, request, pk):
+        if not request.user.has_perm("netbox_compare.add_comparison"):
+            raise PermissionDenied
+        schedule = get_object_or_404(
+            ComparisonSchedule.objects.restrict(request.user, "view").select_related("policy"),
+            pk=pk,
+        )
+        from netbox_compare.jobs import start_run
+
+        run = start_run(schedule, user=request.user)
+        messages.info(
+            request,
+            _("{schedule} started: {queued} devices queued, {skipped} skipped.").format(
+                schedule=schedule, queued=run.comparisons.count(), skipped=len(run.skipped)
+            ),
+        )
+        return redirect(run.get_absolute_url())
+
+
+#
+# Comparison runs
+#
+
+
+@register_model_view(ComparisonRun, "list", path="", detail=False)
+class ComparisonRunListView(generic.ObjectListView):
+    queryset = with_run_counts(
+        ComparisonRun.objects.select_related("schedule", "policy", "requested_by")
+    )
+    table = tables.ComparisonRunTable
+    filterset = filtersets.ComparisonRunFilterSet
+    filterset_form = forms.ComparisonRunFilterForm
+    actions = (BulkExport, BulkDelete)
+
+
+@register_model_view(ComparisonRun)
+class ComparisonRunView(generic.ObjectView):
+    """The run's report: one section per device, with the divergences found on it."""
+
+    queryset = ComparisonRun.objects.select_related("schedule", "policy", "requested_by", "job")
+    actions = (DeleteObject,)
+
+    def get_extra_context(self, request, instance):
+        comparisons = list(
+            instance.comparisons.select_related("device")
+            .prefetch_related("divergences")
+            .order_by("device__name", "pk")
+        )
+        severities = Counter()
+        statuses = Counter()
+        order = {path: i for i, path in enumerate(FIELDS)}
+        object_order = {value: i for i, (value, _label) in enumerate(ObjectTypeChoices)}
+        for c in comparisons:
+            statuses[c.status] += 1
+            c.sorted_divergences = sorted(
+                c.divergences.all(),
+                key=lambda d: (
+                    object_order.get(d.object_type, 99),
+                    d.object_key,
+                    order.get(d.field, 99),
+                ),
+            )
+            severities.update(d.severity for d in c.sorted_divergences)
+
+        devices = {
+            d.pk: d for d in Device.objects.filter(pk__in=[s["device"] for s in instance.skipped])
+        }
+        reasons = dict(SkipReasonChoices)
+        skipped = [
+            {
+                **s,
+                "object": devices.get(s["device"]),
+                "reason_label": reasons.get(s["reason"], s["reason"]),
+            }
+            for s in instance.skipped
+        ]
+        status = run_status([c.status for c in comparisons])
+        finished = [c.completed for c in comparisons if c.completed]
+        done = status == ComparisonStatusChoices.COMPLETED
+        return {
+            "comparisons": comparisons,
+            "skipped": skipped,
+            "status": status,
+            "status_label": dict(ComparisonStatusChoices)[status],
+            "status_color": ComparisonStatusChoices.colors[status],
+            "completed": max(finished) if done and finished else None,
+            "divergent_count": sum(1 for c in comparisons if c.divergence_count),
+            "clean_count": sum(
+                1
+                for c in comparisons
+                if c.status == ComparisonStatusChoices.COMPLETED and not c.divergence_count
+            ),
+            "failed_count": statuses[ComparisonStatusChoices.FAILED],
+            "unfinished_count": sum(1 for c in comparisons if not c.is_final),
+            "divergence_total": sum(c.divergence_count for c in comparisons),
+            "severity_counts": [
+                (label, severities[value], SeverityChoices.colors.get(value))
+                for value, label in reversed(list(SeverityChoices))
+                if severities[value]
+            ],
+        }
+
+
+@register_model_view(ComparisonRun, "delete")
+class ComparisonRunDeleteView(generic.ObjectDeleteView):
+    queryset = ComparisonRun.objects.all()
+
+
+@register_model_view(ComparisonRun, "bulk_delete", path="delete", detail=False)
+class ComparisonRunBulkDeleteView(generic.BulkDeleteView):
+    queryset = with_run_counts(ComparisonRun.objects.all())
+    filterset = filtersets.ComparisonRunFilterSet
+    table = tables.ComparisonRunTable
+
+
+#
 # Comparisons
 #
 
 
 @register_model_view(Comparison, "list", path="", detail=False)
 class ComparisonListView(generic.ObjectListView):
-    queryset = Comparison.objects.select_related("device", "policy", "requested_by")
+    queryset = Comparison.objects.select_related("device", "policy", "requested_by", "run")
     table = tables.ComparisonTable
     filterset = filtersets.ComparisonFilterSet
     filterset_form = forms.ComparisonFilterForm
@@ -119,7 +302,7 @@ class ComparisonListView(generic.ObjectListView):
 
 @register_model_view(Comparison)
 class ComparisonView(generic.ObjectView):
-    queryset = Comparison.objects.select_related("device", "policy", "requested_by", "job")
+    queryset = Comparison.objects.select_related("device", "policy", "requested_by", "job", "run")
     actions = (DeleteObject,)
 
     def get_extra_context(self, request, instance):
@@ -290,7 +473,7 @@ class DeviceComparisonsView(generic.ObjectChildrenView):
     filterset_form = forms.ComparisonFilterForm
     actions = (BulkDelete,)
     tab = ViewTab(
-        label=_("Comparisons"),
+        label=_("Device comparison results"),
         badge=lambda obj: obj.compare_comparisons.count(),
         permission="netbox_compare.view_comparison",
         weight=2000,

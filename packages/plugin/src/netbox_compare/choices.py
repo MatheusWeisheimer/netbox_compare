@@ -83,3 +83,33 @@ class ResolutionStatusChoices(ChoiceSet):
 
     # A divergence in one of these states is settled and can no longer be resolved.
     FINAL = (APPLIED,)
+
+
+class SkipReasonChoices(ChoiceSet):
+    """Why a device selected by a schedule was left out of a run."""
+
+    NO_CONNECTION_MODULE = "no_connection_module"
+    NO_CREDENTIALS = "no_credentials"
+    CREDENTIALS_ERROR = "credentials_error"
+
+    CHOICES = (
+        (NO_CONNECTION_MODULE, _("No connection module declares the device's platform")),
+        (NO_CREDENTIALS, _("No credentials module resolved the device")),
+        (CREDENTIALS_ERROR, _("Credential resolution failed")),
+    )
+
+
+class RecurrenceChoices(ChoiceSet):
+    """How a scheduled job repeats after its first run. Values match netbox_compare.schedule."""
+
+    NONE = "none"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+    CHOICES = (
+        (NONE, _("Does not repeat")),
+        (DAILY, _("Daily")),
+        (WEEKLY, _("Weekly")),
+        (MONTHLY, _("Monthly")),
+    )

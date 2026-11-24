@@ -7,11 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Implemented:
 - Credentials module (Vaultwarden) and the connection module (NAPALM, tested against a Huawei VRP switch).
 - Canonical model, connection contract and the diff, following the comparison semantics below.
-- Manual comparison of one device: the device page button queues a background job, and the report (documented vs. observed value per divergence, plus not-comparable fields) is stored in NetBox. It is shown at `/plugins/compare/comparisons/<id>/`, in a "Comparisons" device tab, and through a read-only REST API.
+- Manual comparison of one device: the device page button queues a background job, and the report (documented vs. observed value per divergence, plus not-comparable fields) is stored in NetBox. It is shown at `/plugins/compare/comparisons/<id>/`, in a "Device comparison results" device tab, and through a read-only REST API.
 - Comparison policies: stored in NetBox (`ComparisonPolicy`: per canonical field, whether it is compared and its severity, set separately; at most one default), editable in the UI and REST API. Each comparison links its policy and keeps a snapshot of its fields (`policy_fields`). The device button runs the default policy or one picked from its dropdown.
 - Resolution: on the report the administrator picks, per divergence, documentation / device / no fix. Apply writes documentation fixes to NetBox (`documentation_fix.py`); for device fixes it only reports whether a connection module declares write support (`device_fix.py`). Outcomes are in the comparison's "Resolution" tab.
+- Scheduled jobs (`ComparisonSchedule`: devices plus device tags, policy, first run, repeats none/daily/weekly/monthly in NetBox's time zone). The queue holds one one-off `ScheduledComparisonJob` per schedule at its next run; each run queues the next (`jobs.sync_schedule`). Each run creates a scheduled job result (`ComparisonRun`), which queues one per-device comparison for each selected device it can compare and lists the others as skipped (no connection module, no credentials). The result page is the report, organized by device. "Run now" starts a run right away.
 
-Not implemented yet: device writes (no write method in the connection contract), scheduled jobs, notification modules, open commands, the modules page, the MCP adapter.
+Not implemented yet: device writes (no write method in the connection contract), notification modules (scheduled runs do not notify yet), open commands, the modules page, the MCP adapter.
 
 Statements marked **(spec)** come from the project's design text (section 5, "Definições do projeto", in Portuguese) and are requirements.
 

@@ -1,7 +1,9 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.db.models.functions import Coalesce
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from netbox.models import NetBoxModel, PrimaryModel
 from netbox.models.features import JobsMixin
@@ -10,11 +12,13 @@ from netbox_compare.choices import (
     ComparisonStatusChoices,
     DivergenceKindChoices,
     ObjectTypeChoices,
+    RecurrenceChoices,
     ResolutionChoices,
     ResolutionStatusChoices,
     SeverityChoices,
 )
 from netbox_compare.policy import considered, validate_policy_fields
+from netbox_compare.schedule import next_run_at
 from netbox_compare_core import FIELDS
 
 
@@ -83,11 +87,180 @@ class ComparisonPolicy(PrimaryModel):
         return considered(self.fields)
 
 
+class ComparisonSchedule(JobsMixin, PrimaryModel):
+    """Periodic comparison of a set of devices: the devices chosen one by one, plus every
+    device carrying one of the chosen tags at run time. Each run produces a
+    :class:`ComparisonRun`. Runs detect and report only; they never apply fixes."""
+
+    name = models.CharField(max_length=100, unique=True)
+    enabled = models.BooleanField(default=True)
+    policy = models.ForeignKey(
+        to=ComparisonPolicy, on_delete=models.PROTECT, related_name="schedules"
+    )
+    devices = models.ManyToManyField(to="dcim.Device", blank=True, related_name="+")
+    device_tags = models.ManyToManyField(
+        to="extras.Tag",
+        blank=True,
+        related_name="+",
+        verbose_name=_("device tags"),
+        help_text=_("Every device with one of these tags when a run starts is included."),
+    )
+    start_time = models.DateTimeField(verbose_name=_("first run"))
+    recurrence = models.CharField(
+        max_length=20,
+        choices=RecurrenceChoices,
+        default=RecurrenceChoices.NONE,
+        verbose_name=_("repeats"),
+        help_text=_(
+            "Later runs keep the first run's time of day: every day, every week on the same "
+            "weekday, or every month on the same day (the last day of shorter months)."
+        ),
+    )
+
+    class Meta:
+        ordering = ("name",)
+        verbose_name = _("scheduled job")
+        verbose_name_plural = _("scheduled jobs")
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        return reverse("plugins:netbox_compare:comparisonschedule", args=[self.pk])
+
+    def target_devices(self):
+        """Devices selected now: chosen ones plus those with a chosen tag. Whether they can
+        actually be compared is decided when a run starts."""
+        from dcim.models import Device
+
+        return Device.objects.filter(
+            models.Q(pk__in=self.devices.values("pk"))
+            | models.Q(tags__in=self.device_tags.values("pk"))
+        ).distinct()
+
+    def clean(self):
+        super().clean()
+        if self.recurrence != RecurrenceChoices.NONE or self.start_time is None:
+            return
+        previous = None
+        if self.pk:
+            previous = (
+                type(self).objects.filter(pk=self.pk).values_list("start_time", flat=True).first()
+            )
+        # A job that does not repeat would never run; one that already ran may stay as it is.
+        if self.start_time != previous and self.start_time <= timezone.now():
+            raise ValidationError(
+                {
+                    "start_time": _(
+                        "A job that does not repeat must have its first run in the future."
+                    )
+                }
+            )
+
+    def next_run(self, now=None):
+        """When the next run is due, in NetBox's time zone; None when no run is left."""
+        return next_run_at(
+            self.start_time,
+            self.recurrence,
+            now or timezone.now(),
+            timezone.get_current_timezone(),
+        )
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from netbox_compare.jobs import sync_schedule
+
+        transaction.on_commit(lambda: sync_schedule(self.pk))
+
+    def delete(self, *args, **kwargs):
+        from netbox_compare.jobs import cancel_scheduled_jobs
+
+        with transaction.atomic():
+            # Job.delete() also cancels the queued RQ job; the generic relation's cascade
+            # would only delete the rows.
+            cancel_scheduled_jobs(self)
+            return super().delete(*args, **kwargs)
+
+
+class ComparisonRun(NetBoxModel):
+    """One run of a schedule: a comparison per device, reported together, by device."""
+
+    schedule = models.ForeignKey(
+        to=ComparisonSchedule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="runs",
+    )
+    # The schedule's name when it ran; kept after the schedule is renamed or deleted.
+    name = models.CharField(max_length=100)
+    policy = models.ForeignKey(
+        to=ComparisonPolicy,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="runs",
+    )
+    # Set when a user started the run by hand; blank for scheduled runs.
+    requested_by = models.ForeignKey(
+        to=settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    job = models.ForeignKey(
+        to="core.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # Selected devices that were not compared: [{"device": id, "name": str, "reason": str}].
+    skipped = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ("-created", "-pk")
+        verbose_name = _("scheduled job result")
+        verbose_name_plural = _("scheduled jobs results")
+
+    def __str__(self):
+        return f"{self.name} #{self.pk}"
+
+    def get_absolute_url(self):
+        return reverse("plugins:netbox_compare:comparisonrun", args=[self.pk])
+
+    @property
+    def status(self):
+        """Derived from the run's comparisons: completed once each one is final."""
+        statuses = list(self.comparisons.values_list("status", flat=True))
+        return run_status(statuses)
+
+    def get_status_display(self):
+        return dict(ComparisonStatusChoices).get(self.status)
+
+    def get_status_color(self):
+        return ComparisonStatusChoices.colors.get(self.status)
+
+
+def run_status(statuses) -> str:
+    """A run's status from its comparisons' statuses."""
+    if all(s in ComparisonStatusChoices.FINAL for s in statuses):
+        return ComparisonStatusChoices.COMPLETED
+    if all(s == ComparisonStatusChoices.PENDING for s in statuses):
+        return ComparisonStatusChoices.PENDING
+    return ComparisonStatusChoices.RUNNING
+
+
 class Comparison(JobsMixin, NetBoxModel):
     """One comparison run of a device: documented (NetBox) vs. observed (device)."""
 
     device = models.ForeignKey(
         to="dcim.Device", on_delete=models.CASCADE, related_name="compare_comparisons"
+    )
+    # The scheduled run this comparison is part of; blank when started from the device page.
+    run = models.ForeignKey(
+        to=ComparisonRun,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="comparisons",
     )
     status = models.CharField(
         max_length=20,
@@ -126,8 +299,8 @@ class Comparison(JobsMixin, NetBoxModel):
 
     class Meta:
         ordering = ("-created", "-pk")
-        verbose_name = _("comparison")
-        verbose_name_plural = _("comparisons")
+        verbose_name = _("device comparison result")
+        verbose_name_plural = _("device comparison results")
 
     def __str__(self):
         return f"{self.device} #{self.pk}"
@@ -214,3 +387,18 @@ class Divergence(models.Model):
     def is_settled(self):
         """Already fixed; it can no longer be resolved."""
         return self.resolution_status in ResolutionStatusChoices.FINAL
+
+
+def with_run_counts(queryset):
+    """Annotate :class:`ComparisonRun` rows with per-device totals, for lists."""
+    final = ComparisonStatusChoices.FINAL
+    return queryset.annotate(
+        device_count=models.Count("comparisons"),
+        failed_count=models.Count(
+            "comparisons", filter=models.Q(comparisons__status=ComparisonStatusChoices.FAILED)
+        ),
+        unfinished_count=models.Count(
+            "comparisons", filter=~models.Q(comparisons__status__in=final)
+        ),
+        divergence_total=Coalesce(models.Sum("comparisons__divergence_count"), 0),
+    )

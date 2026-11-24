@@ -17,7 +17,7 @@
 <div class="row mb-3">
   <div class="col col-12 col-md-5">
     <div class="card">
-      <h2 class="card-header">{% trans "Comparison" %}</h2>
+      <h2 class="card-header">{% trans "Device comparison result" %}</h2>
       <table class="table table-hover attr-table">
         <tr><th scope="row">{% trans "Device" %}</th><td>{{ object.device|linkify }}</td></tr>
         <tr>
@@ -36,6 +36,9 @@
         </tr>
         <tr><th scope="row">{% trans "Platform" %}</th><td>{{ object.platform|placeholder }}</td></tr>
         <tr><th scope="row">{% trans "Connection module" %}</th><td>{{ object.connection_module|placeholder }}</td></tr>
+        {% if object.run %}
+          <tr><th scope="row">{% trans "Scheduled job result" %}</th><td>{{ object.run|linkify }}</td></tr>
+        {% endif %}
         <tr><th scope="row">{% trans "Requested by" %}</th><td>{{ object.requested_by|placeholder }}</td></tr>
         <tr><th scope="row">{% trans "Started" %}</th><td>{{ object.started|isodatetime|placeholder }}</td></tr>
         <tr>
