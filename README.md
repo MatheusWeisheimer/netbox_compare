@@ -58,27 +58,65 @@ Ao atualizar o NetBox, o `upgrade.sh` recria o venv e instala apenas os pacotes 
 
 ### 3. Configurar o NetBox
 
-Em `/opt/netbox/netbox/netbox/configuration.py`:
+Em `/opt/netbox/netbox/netbox/configuration.py`, ative o plugin e configure cada módulo. Exemplo pronto com Vaultwarden, NAPALM (Huawei VRP) e Zabbix; ajuste as URLs e o slug da *platform*:
 
 ```python
+import os
+
 PLUGINS = ["netbox_compare"]
 
 PLUGINS_CONFIG = {
     "netbox_compare": {
         "credentials": [
-            {"module": "vaultwarden", "config": {...}},
+            {
+                "module": "vaultwarden",
+                "config": {
+                    "url": "https://vault.exemplo.com.br",
+                    "client_id": os.environ.get("NBC_VW_CLIENT_ID", ""),
+                    "client_secret": os.environ.get("NBC_VW_CLIENT_SECRET", ""),
+                    "email": os.environ.get("NBC_VW_EMAIL", ""),
+                    "master_password": os.environ.get("NBC_VW_MASTER_PASSWORD", ""),
+                },
+            },
         ],
         "connections": [
-            {"module": "napalm", "config": {...}},
+            {
+                "module": "napalm",
+                "config": {
+                    "platforms": {
+                        "huawei-vrp": {"driver": "huawei_vrp", "timeout": 60},
+                    },
+                },
+            },
         ],
         "notifications": [
-            {"module": "zabbix", "config": {...}},
+            {
+                "module": "zabbix",
+                "config": {
+                    "url": "https://zabbix.exemplo.com.br",
+                    "token": os.environ.get("NBC_ZBX_TOKEN", ""),
+                },
+            },
         ],
     },
 }
 ```
 
-O `config` de cada módulo está descrito no README do pacote. Não escreva segredos direto no arquivo: leia de variáveis de ambiente (`os.environ`). O arquivo [`contrib/netbox_configuration_snippet.py`](contrib/netbox_configuration_snippet.py) mostra um exemplo completo.
+Remova os módulos que não for usar. Todas as opções de cada módulo estão no README do pacote ([Vaultwarden](packages/credentials-vaultwarden), [NAPALM](packages/connection-napalm), [Zabbix](packages/notification-zabbix)).
+
+Os segredos são lidos de variáveis de ambiente, nunca escritos no arquivo. Se uma variável faltar, o NetBox sobe normalmente e a comparação falha com uma mensagem indicando a chave ausente. Coloque-os em um arquivo legível só pelo usuário do NetBox (os nomes estão em [`.env.example`](.env.example)):
+
+```bash
+sudo install -m 600 -o netbox -g netbox /dev/null /opt/netbox/netbox-compare.env
+sudo nano /opt/netbox/netbox-compare.env
+```
+
+E carregue-o nos dois serviços do NetBox. Em `sudo systemctl edit netbox` e em `sudo systemctl edit netbox-rq`, adicione:
+
+```ini
+[Service]
+EnvironmentFile=/opt/netbox/netbox-compare.env
+```
 
 | Chave | Padrão | Descrição |
 |---|---|---|

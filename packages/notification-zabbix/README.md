@@ -43,7 +43,7 @@ import os
         "module": "zabbix",
         "config": {
             "url": "https://zabbix.exemplo.com.br",
-            "token": os.environ["NBC_ZBX_TOKEN"],
+            "token": os.environ.get("NBC_ZBX_TOKEN", ""),
         },
     },
 ],
