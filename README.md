@@ -46,7 +46,7 @@ sudo /opt/netbox/venv/bin/pip install \
 
 Instale só os módulos que for usar. O extra `[vrp]` instala o driver NAPALM para Huawei VRP.
 
-Para que o `upgrade.sh` do NetBox reinstale os pacotes, adicione os mesmos caminhos em `/opt/netbox/local_requirements.txt`:
+Ao atualizar o NetBox, o `upgrade.sh` recria o venv e instala apenas os pacotes do NetBox e os listados em `/opt/netbox/local_requirements.txt`. Para que o plugin continue instalado após uma atualização, adicione os mesmos caminhos nesse arquivo:
 
 ```text
 /opt/netbox-compare/packages/core
@@ -74,9 +74,6 @@ PLUGINS_CONFIG = {
         "notifications": [
             {"module": "zabbix", "config": {...}},
         ],
-        "os_version_custom_field": "os_version",
-        "notification_deadline": 60,
-        "base_url": "https://netbox.exemplo.com.br",
     },
 }
 ```
@@ -88,9 +85,6 @@ O `config` de cada módulo está descrito no README do pacote. Não escreva segr
 | `credentials` | `[]` | Módulos de credenciais, em ordem. Vale o primeiro que resolver o equipamento. |
 | `connections` | `[]` | Módulos de conexão, em ordem. O equipamento usa o primeiro que declarar a sua *platform*. |
 | `notifications` | `[]` | Módulos de notificação. Cada agendamento escolhe quais usar. |
-| `os_version_custom_field` | `None` | Nome do *custom field* de Device com a versão do SO. Sem ele, a versão do SO fica "não comparável". |
-| `notification_deadline` | `60` | Minutos após o início de uma execução agendada para finalizá-la e notificar, mesmo com comparações pendentes (que são marcadas como falhas). |
-| `base_url` | `None` | URL externa do NetBox, usada nos links das notificações. |
 
 ### 4. Aplicar as migrações e reiniciar
 
@@ -110,7 +104,7 @@ Para que um equipamento possa ser comparado, ele precisa ter:
 - um **IP primário**, que é o endereço usado para conectar;
 - credenciais resolvíveis por um módulo de credenciais (no Vaultwarden: um item Login com o mesmo nome do equipamento).
 
-Se usar `os_version_custom_field`, crie o *custom field* de texto em Device com esse nome.
+O NetBox não tem um campo para a versão do SO. Para compará-la, crie um *custom field* de texto em Device chamado `os_version`. Sem ele, a versão do SO fica "não comparável".
 
 ### 6. Verificar
 

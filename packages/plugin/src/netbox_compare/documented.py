@@ -12,7 +12,6 @@ from dcim.models import Interface
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from ipam.models import IPAddress
-from netbox.plugins import get_plugin_config
 
 from netbox_compare_core import (
     NOT_IN_SCHEMA,
@@ -26,6 +25,10 @@ from netbox_compare_core import (
 )
 
 logger = logging.getLogger(__name__)
+
+# NetBox has no native OS version field. It is documented in a Device custom field with this
+# name; without one, the OS version is not comparable.
+OS_VERSION_CUSTOM_FIELD = "os_version"
 
 
 def _has_field(model, name: str) -> bool:
@@ -56,18 +59,13 @@ def _interface_mac(interface) -> Value:
 
 
 def _os_version(device) -> Value:
-    # NetBox has no native OS version field; it may be documented in a custom field.
-    name = get_plugin_config("netbox_compare", "os_version_custom_field")
-    if not name:
-        return NOT_IN_SCHEMA
     from extras.models import CustomField
 
     if not CustomField.objects.filter(
-        name=name, object_types__app_label="dcim", object_types__model="device"
+        name=OS_VERSION_CUSTOM_FIELD, object_types__app_label="dcim", object_types__model="device"
     ).exists():
-        logger.warning("os_version_custom_field %r is not a Device custom field", name)
         return NOT_IN_SCHEMA
-    value = device.custom_field_data.get(name)
+    value = device.custom_field_data.get(OS_VERSION_CUSTOM_FIELD)
     return "" if value is None else str(value)
 
 

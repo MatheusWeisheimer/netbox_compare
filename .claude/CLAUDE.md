@@ -11,7 +11,7 @@ Implemented:
 - Comparison policies: stored in NetBox (`ComparisonPolicy`: per canonical field, whether it is compared and its severity, set separately; at most one default), editable in the UI and REST API. Each comparison links its policy and keeps a snapshot of its fields (`policy_fields`). The device button runs the default policy or one picked from its dropdown.
 - Resolution: on the report the administrator picks, per divergence, documentation / device / no fix. Apply writes documentation fixes to NetBox (`documentation_fix.py`); for device fixes it only reports whether a connection module declares write support (`device_fix.py`). Outcomes are in the comparison's "Resolution" tab.
 - Scheduled jobs (`ComparisonSchedule`: devices plus device tags, policy, first run, repeats none/daily/weekly/monthly in NetBox's time zone). The queue holds one one-off `ScheduledComparisonJob` per schedule at its next run; each run queues the next (`jobs.sync_schedule`). Each run creates a scheduled job result (`ComparisonRun`), which queues one per-device comparison for each selected device it can compare and lists the others as skipped (no connection module, no credentials). The result page is the report, organized by device. "Run now" starts a run right away.
-- Notifications: a schedule links configured notification modules (`ComparisonSchedule.notifications`). A run is finalized once all its comparisons are final (the last `CompareDeviceJob` calls `jobs.finalize_run`), or at `notification_deadline` (`FinalizeRunJob`, which marks unfinished comparisons failed). Finalizing queues `NotifyRunJob`, which sends a `RunReport` to each module and records a `NotificationDelivery` per module, shown on the run page (with "Resend"). The Zabbix module is tested end to end against Zabbix 7.0.
+- Notifications: a schedule links configured notification modules (`ComparisonSchedule.notifications`). A run is finalized once all its comparisons are final (the last `CompareDeviceJob` calls `jobs.finalize_run`), or 60 minutes after it starts (`jobs.NOTIFICATION_DEADLINE`; `FinalizeRunJob`, which marks unfinished comparisons failed). Finalizing queues `NotifyRunJob`, which sends a `RunReport` to each module and records a `NotificationDelivery` per module, shown on the run page (with "Resend"). The Zabbix module is tested end to end against Zabbix 7.0.
 
 Not implemented yet: device writes (no write method in the connection contract), open commands, the modules page, the MCP adapter.
 
@@ -37,8 +37,9 @@ Commands:
 
 Plugin config (`PLUGINS_CONFIG["netbox_compare"]`):
 - `credentials`, `connections`: ordered lists of `{"module": <entry point name>, "config": {...}}`. The first credentials module that resolves the device wins; a device uses the first connection module that declares its platform slug.
-- `os_version_custom_field`: Device custom field holding the OS version (NetBox has no native field).
-- `notifications`: list of `{"module", "config"}`; schedules pick from these by module name. `notification_deadline` (minutes, default 60). `base_url`: NetBox's external URL, for links in notifications.
+- `notifications`: list of `{"module", "config"}`; schedules pick from these by module name.
+
+The OS version (no native NetBox field) is documented in a Device custom field named `os_version` (`documented.OS_VERSION_CUSTOM_FIELD`); without it the field is not comparable.
 
 ## What the project is
 

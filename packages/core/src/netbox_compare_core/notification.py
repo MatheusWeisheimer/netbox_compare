@@ -57,7 +57,6 @@ class DeviceResult:
     error: str = ""
     skip_reason: SkipReason | None = None
     completed: datetime | None = None
-    url: str | None = None  # the device's comparison report, when the plugin knows its base URL
 
     @property
     def max_severity(self) -> str | None:
@@ -75,7 +74,6 @@ class RunReport:
     started: datetime
     completed: datetime
     devices: tuple[DeviceResult, ...]
-    url: str | None = None  # the run's report, when the plugin knows its base URL
 
 
 class NotificationError(Exception):

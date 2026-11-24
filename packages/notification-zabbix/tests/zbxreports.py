@@ -11,7 +11,7 @@ def divergence(
     return DivergenceItem("interface", "GE0/0/1", kind, field, severity, documented, observed)
 
 
-def report(*devices, url="https://nb/plugins/compare/runs/7/"):
+def report(*devices):
     return RunReport(
         run_id=7,
         schedule_name="nightly",
@@ -19,7 +19,6 @@ def report(*devices, url="https://nb/plugins/compare/runs/7/"):
         started=DONE,
         completed=DONE,
         devices=tuple(devices),
-        url=url,
     )
 
 

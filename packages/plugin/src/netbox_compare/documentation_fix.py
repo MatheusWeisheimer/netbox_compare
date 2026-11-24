@@ -24,12 +24,12 @@ from django.db import transaction
 from django.db.models import ProtectedError
 from django.db.models.deletion import RestrictedError
 from ipam.models import IPAddress
-from netbox.plugins import get_plugin_config
 
 from netbox_compare.choices import DivergenceKindChoices, ResolutionStatusChoices
 from netbox_compare.diff import same_value
 from netbox_compare.documented import (
     MAC_SOURCE,
+    OS_VERSION_CUSTOM_FIELD,
     device_record,
     interface_record,
     interfaces_of,
@@ -179,10 +179,7 @@ def _fix_device_field(device, items, user) -> str:
     elif name == "serial_number":
         device.serial = d.observed or ""
     elif name == "os_version":
-        custom_field = get_plugin_config("netbox_compare", "os_version_custom_field")
-        if not custom_field:
-            raise FixError("No os_version_custom_field is configured.")
-        device.custom_field_data[custom_field] = d.observed
+        device.custom_field_data[OS_VERSION_CUSTOM_FIELD] = d.observed
     else:
         raise FixError(f"Cannot fix {d.field} in the documentation.")
     _save(device, user, "change")

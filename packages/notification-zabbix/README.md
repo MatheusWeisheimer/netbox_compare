@@ -13,7 +13,7 @@ O template [`contrib/zabbix_template.yaml`](../../contrib/zabbix_template.yaml) 
 | `netbox.compare.severity` | Maior severidade das divergências: 0 (nenhuma) a 4 (crítica). Há uma trigger por nível. |
 | `netbox.compare.divergences` | Número de divergências |
 | `netbox.compare.status` | 0 comparado, 1 não foi possível comparar |
-| `netbox.compare.report` | Resumo em texto com link para o relatório |
+| `netbox.compare.report` | Resumo em texto |
 
 Uma execução sem divergências envia severidade 0 e o problema é resolvido. Uma comparação que falhou envia só `status` e `report`. Equipamentos pulados por falta de configuração (sem módulo de conexão ou sem credenciais) não enviam nada.
 
@@ -47,10 +47,9 @@ import os
         },
     },
 ],
-"base_url": "https://netbox.exemplo.com.br",
 ```
 
-Defina também `base_url` no `PLUGINS_CONFIG` do plugin, para os links no item `report`. Depois, selecione o módulo `zabbix` nos agendamentos que devem notificar.
+Depois, selecione o módulo `zabbix` nos agendamentos que devem notificar.
 
 | Chave | Padrão | Descrição |
 |---|---|---|

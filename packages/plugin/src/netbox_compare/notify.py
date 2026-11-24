@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 
 from django.utils import timezone
-from netbox.plugins import get_plugin_config
 
 from netbox_compare.choices import ComparisonStatusChoices, DeliveryStatusChoices
 from netbox_compare.modules import notification_module
@@ -26,11 +25,6 @@ from netbox_compare_core import (
 logger = logging.getLogger(__name__)
 
 
-def absolute_url(path: str) -> str | None:
-    base = get_plugin_config("netbox_compare", "base_url")
-    return f"{base.rstrip('/')}{path}" if base else None
-
-
 def build_report(run) -> RunReport:
     devices = []
     comparisons = (
@@ -40,7 +34,6 @@ def build_report(run) -> RunReport:
     )
     for c in comparisons:
         name = c.device.name or str(c.device)
-        url = absolute_url(c.get_absolute_url())
         if c.status == ComparisonStatusChoices.COMPLETED:
             devices.append(
                 DeviceResult(
@@ -59,7 +52,6 @@ def build_report(run) -> RunReport:
                         for d in c.divergences.all()
                     ),
                     completed=c.completed,
-                    url=url,
                 )
             )
         else:
@@ -69,7 +61,6 @@ def build_report(run) -> RunReport:
                     status=DeviceStatus.FAILED,
                     error=c.error or "The comparison did not finish",
                     completed=c.completed,
-                    url=url,
                 )
             )
     for s in run.skipped:
@@ -87,7 +78,6 @@ def build_report(run) -> RunReport:
         started=run.created,
         completed=run.finalized or timezone.now(),
         devices=tuple(devices),
-        url=absolute_url(run.get_absolute_url()),
     )
 
 

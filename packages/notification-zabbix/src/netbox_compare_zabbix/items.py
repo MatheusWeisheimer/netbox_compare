@@ -8,7 +8,7 @@ Each device is a Zabbix host with the same name (or mapped in config) that carri
 * ``<prefix>.divergences``: number of divergences.
 * ``<prefix>.status``: 0 compared, 1 could not compare (comparison failed, or the credentials
   backend failed).
-* ``<prefix>.report``: a short text summary with a link to the report.
+* ``<prefix>.report``: a short text summary.
 
 A failed comparison sends only status and report: the last known drift stays as it was.
 Devices skipped for setup reasons (no connection module, no credentials) send nothing.
@@ -67,12 +67,12 @@ def report_values(
             item("report", device_summary(device, report))
         elif device.status == DeviceStatus.FAILED:
             item("status", 1)
-            item("report", _with_link(f"Comparison failed: {device.error}", device, report))
+            item("report", _with_header(f"Comparison failed: {device.error}", report))
         elif device.skip_reason == SkipReason.CREDENTIALS_ERROR:
             item("status", 1)
             item(
                 "report",
-                _with_link("Not compared: the credentials backend failed", device, report),
+                _with_header("Not compared: the credentials backend failed", report),
             )
     return values
 
@@ -89,7 +89,7 @@ def device_summary(device: DeviceResult, report: RunReport) -> str:
         if len(ordered) > MAX_REPORT_LINES:
             lines.append(f"... and {len(ordered) - MAX_REPORT_LINES} more")
         text = "\n".join(lines)
-    return _with_link(text, device, report)
+    return _with_header(text, report)
 
 
 def divergence_line(d: DivergenceItem) -> str:
@@ -109,10 +109,9 @@ def _show(value: Any) -> str:
     return repr(value) if isinstance(value, str) else str(value)
 
 
-def _with_link(text: str, device: DeviceResult, report: RunReport) -> str:
+def _with_header(text: str, report: RunReport) -> str:
     header = f"netbox-compare: {report.schedule_name} (run #{report.run_id})"
-    url = device.url or report.url
-    return "\n".join(p for p in (header, text, url) if p)
+    return f"{header}\n{text}"
 
 
 def _clock(when: datetime) -> int:

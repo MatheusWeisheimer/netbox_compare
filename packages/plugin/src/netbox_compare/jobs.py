@@ -5,7 +5,6 @@ from core.choices import JobStatusChoices
 from django.db import transaction
 from django.utils import timezone
 from netbox.jobs import JobRunner
-from netbox.plugins import get_plugin_config
 
 from netbox_compare.choices import (
     ComparisonStatusChoices,
@@ -23,6 +22,10 @@ from netbox_compare.modules import connection_for_platform
 from netbox_compare.runner import run_comparison
 
 logger = logging.getLogger(__name__)
+
+# Minutes after a scheduled run starts at which it is finalized (and notified) even if some
+# comparisons have not finished; those are marked failed.
+NOTIFICATION_DEADLINE = 60
 
 # Queued but not started. A running job is left alone: it finishes, and sync runs after it.
 QUEUED = (JobStatusChoices.STATUS_PENDING, JobStatusChoices.STATUS_SCHEDULED)
@@ -151,9 +154,8 @@ def start_run(schedule, user=None, job=None, log=logger) -> ComparisonRun:
             enqueue_comparison(device, user, schedule.policy, run=run)
         if selected:
             # Backstop: a comparison whose worker dies never reports back.
-            deadline = get_plugin_config("netbox_compare", "notification_deadline")
             FinalizeRunJob.enqueue(
-                instance=run, schedule_at=timezone.now() + timedelta(minutes=deadline)
+                instance=run, schedule_at=timezone.now() + timedelta(minutes=NOTIFICATION_DEADLINE)
             )
     if not selected:
         finalize_run(run.pk)
@@ -203,10 +205,9 @@ def finalize_run(run_id, deadline_passed=False, log=logger) -> bool:
         if unfinished.exists():
             if not deadline_passed:
                 return False
-            deadline = get_plugin_config("netbox_compare", "notification_deadline")
             count = unfinished.update(
                 status=ComparisonStatusChoices.FAILED,
-                error=f"Did not finish within {deadline} minutes of the run's start",
+                error=f"Did not finish within {NOTIFICATION_DEADLINE} minutes of the run's start",
                 completed=timezone.now(),
             )
             log.warning("Run %s: %d comparisons did not finish; marked failed", run_id, count)

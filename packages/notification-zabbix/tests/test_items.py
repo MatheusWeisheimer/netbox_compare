@@ -16,7 +16,6 @@ def test_drift_sends_highest_severity_count_status_and_report():
     text = got[("r1", "report")]
     assert "2 divergences (high: 1, low: 1)" in text
     assert "mtu documented 9000, observed 1500" in text
-    assert "https://nb/plugins/compare/runs/7/" in text
     assert all(v.clock == int(DONE.timestamp()) for v in values)
     assert all(v.key.startswith("netbox.compare.") for v in values)
 
