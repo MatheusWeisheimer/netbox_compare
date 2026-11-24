@@ -3,7 +3,7 @@
 import os as _os
 from pathlib import Path as _Path
 
-_NBC_ENV = _Path("/caminho/para/netbox_compare/.env")  # ajuste para o seu clone
+_NBC_ENV = _Path("/opt/netbox-compare/.env")  # ajuste para o seu clone
 if _NBC_ENV.is_file():
     for _line in _NBC_ENV.read_text().splitlines():
         _line = _line.strip()

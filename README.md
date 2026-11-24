@@ -58,10 +58,31 @@ Ao atualizar o NetBox, o `upgrade.sh` recria o venv e instala apenas os pacotes 
 
 ### 3. Configurar o NetBox
 
-Em `/opt/netbox/netbox/netbox/configuration.py`, ative o plugin e configure cada módulo. Exemplo pronto com Vaultwarden, NAPALM (Huawei VRP) e Zabbix; ajuste as URLs e o slug da *platform*:
+Os segredos (senhas e tokens) ficam em um arquivo `.env`, fora do `configuration.py`. Crie-o a partir do [`.env.example`](.env.example), preencha os valores e deixe-o legível só pelo usuário do NetBox:
+
+```bash
+cd /opt/netbox-compare
+sudo cp .env.example .env
+sudo nano .env
+sudo chown netbox .env
+sudo chmod 600 .env
+```
+
+Em `/opt/netbox/netbox/netbox/configuration.py`, carregue o `.env`, ative o plugin e configure cada módulo. Exemplo pronto com Vaultwarden, NAPALM (Huawei VRP) e Zabbix; ajuste as URLs e o slug da *platform*:
 
 ```python
 import os
+from pathlib import Path
+
+# Carrega os segredos do netbox-compare em os.environ.
+for line in Path("/opt/netbox-compare/.env").read_text().splitlines():
+    line = line.strip()
+    if line and not line.startswith("#") and "=" in line:
+        key, value = line.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]  # remove as aspas em volta do valor
+        os.environ.setdefault(key.strip(), value)
 
 PLUGINS = ["netbox_compare"]
 
@@ -102,21 +123,9 @@ PLUGINS_CONFIG = {
 }
 ```
 
+O `.env` é lido sempre que o NetBox carrega a configuração: no servidor web, no `rqworker` e em comandos como `manage.py migrate`. Depois de alterá-lo, reinicie o NetBox. Se uma variável faltar, o NetBox sobe normalmente e a comparação falha com uma mensagem indicando a chave ausente.
+
 Remova os módulos que não for usar. Todas as opções de cada módulo estão no README do pacote ([Vaultwarden](packages/credentials-vaultwarden), [NAPALM](packages/connection-napalm), [Zabbix](packages/notification-zabbix)).
-
-Os segredos são lidos de variáveis de ambiente, nunca escritos no arquivo. Se uma variável faltar, o NetBox sobe normalmente e a comparação falha com uma mensagem indicando a chave ausente. Coloque-os em um arquivo legível só pelo usuário do NetBox (os nomes estão em [`.env.example`](.env.example)):
-
-```bash
-sudo install -m 600 -o netbox -g netbox /dev/null /opt/netbox/netbox-compare.env
-sudo nano /opt/netbox/netbox-compare.env
-```
-
-E carregue-o nos dois serviços do NetBox. Em `sudo systemctl edit netbox` e em `sudo systemctl edit netbox-rq`, adicione:
-
-```ini
-[Service]
-EnvironmentFile=/opt/netbox/netbox-compare.env
-```
 
 | Chave | Padrão | Descrição |
 |---|---|---|
