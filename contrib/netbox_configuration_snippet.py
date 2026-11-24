@@ -40,6 +40,16 @@ PLUGINS_CONFIG = {
                 },
             },
         ],
+        "notifications": [
+            {
+                "module": "zabbix",
+                "config": {
+                    "url": _os.environ.get("NBC_ZBX_URL", "http://localhost:8081"),
+                    "token": _os.environ.get("NBC_ZBX_TOKEN", ""),
+                },
+            },
+        ],
+        "base_url": "http://localhost:8000",
     },
 }
 # --- end netbox-compare ---------------------------------------------------------------------

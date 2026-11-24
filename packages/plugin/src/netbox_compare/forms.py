@@ -149,12 +149,22 @@ class ComparisonScheduleForm(PrimaryModelForm):
             "credentials can be resolved."
         ),
     )
+    notifications = forms.MultipleChoiceField(
+        choices=(),
+        required=False,
+        label=_("Notifications"),
+        help_text=_(
+            "Notification modules that receive the result of each run. They are configured in "
+            "the plugin settings (PLUGINS_CONFIG)."
+        ),
+    )
     comments = CommentField()
 
     fieldsets = (
         FieldSet("name", "description", "enabled", "policy", "tags", name=_("Scheduled job")),
         FieldSet("devices", "device_tags", name=_("Devices")),
         FieldSet("start_time", "recurrence", name=_("Timing")),
+        FieldSet("notifications", name=_("Notifications")),
     )
 
     class Meta:
@@ -168,11 +178,18 @@ class ComparisonScheduleForm(PrimaryModelForm):
             "device_tags",
             "start_time",
             "recurrence",
+            "notifications",
             "owner",
             "tags",
             "comments",
         )
         widgets = {"start_time": DateTimePicker()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from netbox_compare.modules import configured_notification_names
+
+        self.fields["notifications"].choices = [(n, n) for n in configured_notification_names()]
 
     def clean(self):
         super().clean()

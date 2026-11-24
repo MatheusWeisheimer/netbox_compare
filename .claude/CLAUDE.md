@@ -11,8 +11,9 @@ Implemented:
 - Comparison policies: stored in NetBox (`ComparisonPolicy`: per canonical field, whether it is compared and its severity, set separately; at most one default), editable in the UI and REST API. Each comparison links its policy and keeps a snapshot of its fields (`policy_fields`). The device button runs the default policy or one picked from its dropdown.
 - Resolution: on the report the administrator picks, per divergence, documentation / device / no fix. Apply writes documentation fixes to NetBox (`documentation_fix.py`); for device fixes it only reports whether a connection module declares write support (`device_fix.py`). Outcomes are in the comparison's "Resolution" tab.
 - Scheduled jobs (`ComparisonSchedule`: devices plus device tags, policy, first run, repeats none/daily/weekly/monthly in NetBox's time zone). The queue holds one one-off `ScheduledComparisonJob` per schedule at its next run; each run queues the next (`jobs.sync_schedule`). Each run creates a scheduled job result (`ComparisonRun`), which queues one per-device comparison for each selected device it can compare and lists the others as skipped (no connection module, no credentials). The result page is the report, organized by device. "Run now" starts a run right away.
+- Notifications: a schedule links configured notification modules (`ComparisonSchedule.notifications`). A run is finalized once all its comparisons are final (the last `CompareDeviceJob` calls `jobs.finalize_run`), or at `notification_deadline` (`FinalizeRunJob`, which marks unfinished comparisons failed). Finalizing queues `NotifyRunJob`, which sends a `RunReport` to each module and records a `NotificationDelivery` per module, shown on the run page (with "Resend"). The Zabbix module is tested end to end against Zabbix 7.0.
 
-Not implemented yet: device writes (no write method in the connection contract), notification modules (scheduled runs do not notify yet), open commands, the modules page, the MCP adapter.
+Not implemented yet: device writes (no write method in the connection contract), open commands, the modules page, the MCP adapter.
 
 Statements marked **(spec)** come from the project's design text (section 5, "Definições do projeto", in Portuguese) and are requirements.
 
@@ -23,19 +24,21 @@ uv workspace monorepo; each package is separately installable (hatchling, `src/`
 - `packages/core` → `netbox_compare_core`: canonical model and module contracts. No Django/NetBox dependency.
 - `packages/credentials-vaultwarden` → `netbox_compare_vaultwarden`: credentials module. Matches the Login item named after the device; the host is the device's primary IP. Decrypted secrets stay in process memory only.
 - `packages/connection-napalm` → `netbox_compare_napalm`: connection module. Maps NetBox platform slugs to NAPALM drivers; `fixups.py` corrects per-driver output (e.g. huawei_vrp administrative state).
+- `packages/notification-zabbix` → `netbox_compare_zabbix`: notification module. Pushes per-device values (highest severity, divergence count, status, report text) to trapper items on the Zabbix host named after the device, via `history.push` (API) or the trapper protocol. The items and triggers are in `contrib/zabbix_template.yaml`.
 - `packages/plugin` → `netbox_compare`: the NetBox plugin. **Not** a workspace member, because it needs NetBox and is only installed into NetBox's venv.
 
 Commands:
 - `uv sync`: dev env for core + modules
 - `uv run pytest`: unit tests, including the plugin's Django-free modules (`diff.py`; `packages/plugin/tests/conftest.py` stubs NetBox)
-- `set -a; . ./.env; set +a; uv run pytest -m live`: tests against the local Vaultwarden
+- `set -a; . ./.env; set +a; uv run pytest -m live`: tests against the local Vaultwarden and Zabbix
 - `uv run ruff check . && uv run ruff format --check .`
 - `sudo scripts/install-netbox-dev.sh`: editable-install all packages into `/opt/netbox/venv`, run the plugin's migrations, and rewrite `PLUGINS_CONFIG` from `contrib/netbox_configuration_snippet.py`. Secrets come from the git-ignored `.env` (see `.env.example`).
-- Local dev environment (outside the repo): NetBox 4.5 at `/opt/netbox` on :8000 (runserver + rqworker, run by the user; restart both after changing entry points or job code), Vaultwarden at `https://localhost:8443` (CA: `~/caddy-root.crt`). Commands that need `sudo` must be run by the user.
+- Local dev environment (outside the repo): NetBox 4.5 at `/opt/netbox` on :8000 (runserver + rqworker, run by the user; restart both after changing entry points or job code), Vaultwarden at `https://localhost:8443` (CA: `~/caddy-root.crt`), Zabbix 7.0 in Docker (UI/API `http://localhost:8081`, trapper `127.0.0.1:10051`; test host `nbc-test-router`). Commands that need `sudo` must be run by the user.
 
 Plugin config (`PLUGINS_CONFIG["netbox_compare"]`):
 - `credentials`, `connections`: ordered lists of `{"module": <entry point name>, "config": {...}}`. The first credentials module that resolves the device wins; a device uses the first connection module that declares its platform slug.
 - `os_version_custom_field`: Device custom field holding the OS version (NetBox has no native field).
+- `notifications`: list of `{"module", "config"}`; schedules pick from these by module name. `notification_deadline` (minutes, default 60). `base_url`: NetBox's external URL, for links in notifications.
 
 ## What the project is
 

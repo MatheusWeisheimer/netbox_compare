@@ -1,13 +1,24 @@
 import logging
+from datetime import timedelta
 
 from core.choices import JobStatusChoices
 from django.db import transaction
 from django.utils import timezone
 from netbox.jobs import JobRunner
+from netbox.plugins import get_plugin_config
 
-from netbox_compare.choices import SkipReasonChoices
+from netbox_compare.choices import (
+    ComparisonStatusChoices,
+    DeliveryStatusChoices,
+    SkipReasonChoices,
+)
 from netbox_compare.credentials import resolve_credentials
-from netbox_compare.models import Comparison, ComparisonRun, ComparisonSchedule
+from netbox_compare.models import (
+    Comparison,
+    ComparisonRun,
+    ComparisonSchedule,
+    NotificationDelivery,
+)
 from netbox_compare.modules import connection_for_platform
 from netbox_compare.runner import run_comparison
 
@@ -29,6 +40,21 @@ class CompareDeviceJob(JobRunner):
             pk=comparison_id
         )
         run_comparison(comparison, log=self.logger)
+
+    @classmethod
+    def handle(cls, job, *args, **kwargs):
+        # super().handle() catches every exception (including job timeouts), so a run's last
+        # comparison always gets here, whether it completed or failed.
+        super().handle(job, *args, **kwargs)
+        comparison_id = kwargs.get("comparison_id")
+        run_id = (
+            Comparison.objects.filter(pk=comparison_id).values_list("run_id", flat=True).first()
+        )
+        if run_id:
+            try:
+                finalize_run(run_id)
+            except Exception:
+                logger.exception("Could not finalize run %s", run_id)
 
 
 @transaction.atomic
@@ -118,9 +144,91 @@ def start_run(schedule, user=None, job=None, log=logger) -> ComparisonRun:
         )
         run.full_clean()
         run.save()
+        NotificationDelivery.objects.bulk_create(
+            NotificationDelivery(run=run, module=name) for name in schedule.notifications
+        )
         for device in selected:
             enqueue_comparison(device, user, schedule.policy, run=run)
+        if selected:
+            # Backstop: a comparison whose worker dies never reports back.
+            deadline = get_plugin_config("netbox_compare", "notification_deadline")
+            FinalizeRunJob.enqueue(
+                instance=run, schedule_at=timezone.now() + timedelta(minutes=deadline)
+            )
+    if not selected:
+        finalize_run(run.pk)
     return run
+
+
+class FinalizeRunJob(JobRunner):
+    """Finalizes a run whose comparisons did not all finish by the notification deadline;
+    the unfinished ones are marked failed. Removed when the run finalizes in time."""
+
+    class Meta:
+        name = "Scheduled comparison deadline"
+
+    def run(self, *args, **kwargs):
+        if finalize_run(self.job.object_id, deadline_passed=True, log=self.logger):
+            self.logger.info("Run finalized at its deadline")
+        else:
+            self.logger.info("Run already finalized; nothing to do")
+
+
+class NotifyRunJob(JobRunner):
+    """Sends a finalized run to its notification modules. A separate job, so a slow or
+    unreachable notification channel never holds up a comparison."""
+
+    class Meta:
+        name = "Scheduled comparison notification"
+
+    def run(self, *args, **kwargs):
+        from netbox_compare.notify import send_notifications
+
+        run = ComparisonRun.objects.select_related("policy").filter(pk=self.job.object_id).first()
+        if run is None:
+            self.logger.warning("The run was deleted; nothing to send")
+            return
+        send_notifications(run, log=self.logger)
+
+
+def finalize_run(run_id, deadline_passed=False, log=logger) -> bool:
+    """Finalize the run once all its comparisons are final, or now if ``deadline_passed``
+    (unfinished comparisons are marked failed). Queues its notifications. Returns True if this
+    call finalized it. Safe to call concurrently: only one caller ever finalizes a run."""
+    with transaction.atomic():
+        run = ComparisonRun.objects.select_for_update().filter(pk=run_id).first()
+        if run is None or run.finalized:
+            return False
+        unfinished = run.comparisons.exclude(status__in=ComparisonStatusChoices.FINAL)
+        if unfinished.exists():
+            if not deadline_passed:
+                return False
+            deadline = get_plugin_config("netbox_compare", "notification_deadline")
+            count = unfinished.update(
+                status=ComparisonStatusChoices.FAILED,
+                error=f"Did not finish within {deadline} minutes of the run's start",
+                completed=timezone.now(),
+            )
+            log.warning("Run %s: %d comparisons did not finish; marked failed", run_id, count)
+        run.finalized = timezone.now()
+        run.save(update_fields=["finalized"])
+        for job in FinalizeRunJob.get_jobs(run).filter(status__in=QUEUED):
+            job.delete()
+        if run.deliveries.filter(status=DeliveryStatusChoices.PENDING).exists():
+            NotifyRunJob.enqueue(instance=run)
+    return True
+
+
+def resend_notifications(run) -> bool:
+    """Send a finalized run to its notification modules again. Returns False if the run is
+    not finalized yet or has no notification modules."""
+    with transaction.atomic():
+        run = ComparisonRun.objects.select_for_update().get(pk=run.pk)
+        if not run.finalized or not run.deliveries.exists():
+            return False
+        run.deliveries.update(status=DeliveryStatusChoices.PENDING, detail="", attempted=None)
+        NotifyRunJob.enqueue(instance=run)
+    return True
 
 
 def _schedule_jobs(schedule):

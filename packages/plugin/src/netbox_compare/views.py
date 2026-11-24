@@ -22,6 +22,7 @@ from utilities.views import ViewTab, register_model_view
 from netbox_compare import filtersets, forms, tables
 from netbox_compare.choices import (
     ComparisonStatusChoices,
+    DeliveryStatusChoices,
     ObjectTypeChoices,
     ResolutionStatusChoices,
     SeverityChoices,
@@ -250,8 +251,14 @@ class ComparisonRunView(generic.ObjectView):
         status = run_status([c.status for c in comparisons])
         finished = [c.completed for c in comparisons if c.completed]
         done = status == ComparisonStatusChoices.COMPLETED
+        deliveries = list(instance.deliveries.all())
         return {
             "comparisons": comparisons,
+            "deliveries": deliveries,
+            "notifying": any(d.status == DeliveryStatusChoices.PENDING for d in deliveries),
+            "can_resend": instance.finalized
+            and deliveries
+            and request.user.has_perm("netbox_compare.change_comparisonrun"),
             "skipped": skipped,
             "status": status,
             "status_label": dict(ComparisonStatusChoices)[status],
@@ -272,6 +279,25 @@ class ComparisonRunView(generic.ObjectView):
                 if severities[value]
             ],
         }
+
+
+class ComparisonRunNotifyView(LoginRequiredMixin, View):
+    """Send a finalized run to its notification modules again (POST only). Only reports;
+    never applies fixes."""
+
+    def post(self, request, pk):
+        if not request.user.has_perm("netbox_compare.change_comparisonrun"):
+            raise PermissionDenied
+        run = get_object_or_404(ComparisonRun.objects.restrict(request.user, "view"), pk=pk)
+        from netbox_compare.jobs import resend_notifications
+
+        if resend_notifications(run):
+            messages.info(request, _("Notifications queued."))
+        else:
+            messages.warning(
+                request, _("The run has not finished yet, or has no notification modules.")
+            )
+        return redirect(run.get_absolute_url())
 
 
 @register_model_view(ComparisonRun, "delete")

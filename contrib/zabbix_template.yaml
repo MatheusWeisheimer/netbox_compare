@@ -1,0 +1,126 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: c916ded36d4e4fa9a354c979130ee57e
+      name: Templates/Applications
+  templates:
+    - uuid: 5c99cec32f2448cd91e595716574ccfd
+      template: 'netbox-compare drift'
+      name: 'netbox-compare drift'
+      description: |
+        Configuration drift between NetBox (documented) and the device (observed), sent by the
+        netbox-compare "zabbix" notification module after each scheduled comparison run.
+        Link it to the hosts that are network devices in NetBox (same host name as the NetBox
+        device). All items are trappers: the values are pushed, never polled.
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 9101aac4fcf84fd19da88ec84620bb29
+          name: 'netbox-compare: divergences'
+          type: TRAP
+          key: netbox.compare.divergences
+          delay: '0'
+          description: 'Number of divergences found by the last completed comparison.'
+          tags:
+            - tag: component
+              value: netbox-compare
+        - uuid: ce1b5217f9ab4f9ab0d3c64eacad7c4a
+          name: 'netbox-compare: report'
+          type: TRAP
+          key: netbox.compare.report
+          delay: '0'
+          value_type: TEXT
+          trends: '0'
+          description: 'Summary of the last comparison, with a link to the report in NetBox.'
+          tags:
+            - tag: component
+              value: netbox-compare
+        - uuid: 35cf6d8e6063489a8af421d4f6d216c2
+          name: 'netbox-compare: highest divergence severity'
+          type: TRAP
+          key: netbox.compare.severity
+          delay: '0'
+          description: 'Highest severity among the divergences of the last completed comparison: 0 none, 1 low, 2 medium, 3 high, 4 critical.'
+          valuemap:
+            name: 'netbox-compare severity'
+          tags:
+            - tag: component
+              value: netbox-compare
+          triggers:
+            - uuid: d5acbb6749e845f9b25f43d1182ed75a
+              expression: 'last(/netbox-compare drift/netbox.compare.severity)=1'
+              name: 'Configuration drift on {HOST.NAME} (low)'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: INFO
+              description: 'NetBox and the device disagree. See the "netbox-compare: report" item for details.'
+              tags:
+                - tag: scope
+                  value: drift
+            - uuid: e4ad69a5055444bfa0f08ac263fba545
+              expression: 'last(/netbox-compare drift/netbox.compare.severity)=2'
+              name: 'Configuration drift on {HOST.NAME} (medium)'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: WARNING
+              description: 'NetBox and the device disagree. See the "netbox-compare: report" item for details.'
+              tags:
+                - tag: scope
+                  value: drift
+            - uuid: 2eeeef5ca4c14913be25de43dbec5df6
+              expression: 'last(/netbox-compare drift/netbox.compare.severity)=3'
+              name: 'Configuration drift on {HOST.NAME} (high)'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: HIGH
+              description: 'NetBox and the device disagree. See the "netbox-compare: report" item for details.'
+              tags:
+                - tag: scope
+                  value: drift
+            - uuid: 4d2c1c9cc63145d7ace3ad389cc734cb
+              expression: 'last(/netbox-compare drift/netbox.compare.severity)=4'
+              name: 'Configuration drift on {HOST.NAME} (critical)'
+              opdata: '{ITEM.LASTVALUE}'
+              priority: DISASTER
+              description: 'NetBox and the device disagree. See the "netbox-compare: report" item for details.'
+              tags:
+                - tag: scope
+                  value: drift
+        - uuid: ccc4c3e811b24963a351cc54cee71c8a
+          name: 'netbox-compare: comparison status'
+          type: TRAP
+          key: netbox.compare.status
+          delay: '0'
+          description: '0: the device was compared. 1: it could not be compared (the comparison failed, or the credentials backend failed).'
+          valuemap:
+            name: 'netbox-compare status'
+          tags:
+            - tag: component
+              value: netbox-compare
+          triggers:
+            - uuid: 8825c3d47222417ba8a4b490fb1e5a9b
+              expression: 'last(/netbox-compare drift/netbox.compare.status)=1'
+              name: 'netbox-compare could not compare {HOST.NAME}'
+              priority: AVERAGE
+              description: 'The last scheduled comparison of this device failed. See the "netbox-compare: report" item for the error.'
+              tags:
+                - tag: scope
+                  value: availability
+      valuemaps:
+        - uuid: 4858e662e7e84e558c2aa8f0cbca2a16
+          name: 'netbox-compare severity'
+          mappings:
+            - value: '0'
+              newvalue: none
+            - value: '1'
+              newvalue: low
+            - value: '2'
+              newvalue: medium
+            - value: '3'
+              newvalue: high
+            - value: '4'
+              newvalue: critical
+        - uuid: 3f96bc32714241dd964196d10af3bf7d
+          name: 'netbox-compare status'
+          mappings:
+            - value: '0'
+              newvalue: compared
+            - value: '1'
+              newvalue: 'could not compare'

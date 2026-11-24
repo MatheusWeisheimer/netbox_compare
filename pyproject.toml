@@ -6,6 +6,7 @@ dependencies = [
     "netbox-compare-core",
     "netbox-compare-vaultwarden",
     "netbox-compare-napalm",
+    "netbox-compare-zabbix",
 ]
 
 [dependency-groups]
@@ -15,12 +16,18 @@ dev = ["pytest>=8", "ruff>=0.6"]
 package = false
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/credentials-vaultwarden", "packages/connection-napalm"]
+members = [
+    "packages/core",
+    "packages/credentials-vaultwarden",
+    "packages/connection-napalm",
+    "packages/notification-zabbix",
+]
 
 [tool.uv.sources]
 netbox-compare-core = { workspace = true }
 netbox-compare-vaultwarden = { workspace = true }
 netbox-compare-napalm = { workspace = true }
+netbox-compare-zabbix = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -36,12 +43,17 @@ ignore = ["S101"]
 
 [tool.pytest.ini_options]
 addopts = "-m 'not live' --import-mode=importlib"
-pythonpath = ["packages/credentials-vaultwarden/tests", "packages/plugin/src"]
-markers = ["live: needs a running Vaultwarden and NBC_VW_* env vars"]
+pythonpath = [
+    "packages/credentials-vaultwarden/tests",
+    "packages/notification-zabbix/tests",
+    "packages/plugin/src",
+]
+markers = ["live: needs a running Vaultwarden or Zabbix and their NBC_* env vars"]
 testpaths = [
     "packages/core/tests",
     "packages/credentials-vaultwarden/tests",
     "packages/connection-napalm/tests",
+    "packages/notification-zabbix/tests",
     "packages/plugin/tests",
 ]
 
@@ -51,5 +63,7 @@ known-first-party = [
     "netbox_compare_core",
     "netbox_compare_napalm",
     "netbox_compare_vaultwarden",
+    "netbox_compare_zabbix",
     "vaultfixtures",
+    "zbxreports",
 ]

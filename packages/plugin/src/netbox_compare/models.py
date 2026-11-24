@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models.functions import Coalesce
@@ -10,6 +11,7 @@ from netbox.models.features import JobsMixin
 
 from netbox_compare.choices import (
     ComparisonStatusChoices,
+    DeliveryStatusChoices,
     DivergenceKindChoices,
     ObjectTypeChoices,
     RecurrenceChoices,
@@ -116,6 +118,15 @@ class ComparisonSchedule(JobsMixin, PrimaryModel):
             "weekday, or every month on the same day (the last day of shorter months)."
         ),
     )
+    # Names of configured notification modules (PLUGINS_CONFIG "notifications") that receive
+    # each run's result.
+    notifications = ArrayField(
+        base_field=models.CharField(max_length=100),
+        default=list,
+        blank=True,
+        verbose_name=_("notifications"),
+        help_text=_("Notification modules that receive the result of each run."),
+    )
 
     class Meta:
         ordering = ("name",)
@@ -140,6 +151,19 @@ class ComparisonSchedule(JobsMixin, PrimaryModel):
 
     def clean(self):
         super().clean()
+        from netbox_compare.modules import configured_notification_names
+
+        configured = configured_notification_names()
+        unknown = sorted(set(self.notifications) - set(configured))
+        if unknown:
+            raise ValidationError(
+                {
+                    "notifications": _(
+                        "Not configured notification modules: {unknown}. Configured: {configured}."
+                    ).format(unknown=", ".join(unknown), configured=", ".join(configured) or "none")
+                }
+            )
+        self.notifications = [n for n in configured if n in self.notifications]
         if self.recurrence != RecurrenceChoices.NONE or self.start_time is None:
             return
         previous = None
@@ -182,8 +206,11 @@ class ComparisonSchedule(JobsMixin, PrimaryModel):
             return super().delete(*args, **kwargs)
 
 
-class ComparisonRun(NetBoxModel):
-    """One run of a schedule: a comparison per device, reported together, by device."""
+class ComparisonRun(JobsMixin, NetBoxModel):
+    """One run of a schedule: a comparison per device, reported together, by device.
+
+    Once every comparison is final (or the notification deadline passes) the run is finalized
+    and its result is sent to the notification modules in :attr:`deliveries`."""
 
     schedule = models.ForeignKey(
         to=ComparisonSchedule,
@@ -214,6 +241,8 @@ class ComparisonRun(NetBoxModel):
     )
     # Selected devices that were not compared: [{"device": id, "name": str, "reason": str}].
     skipped = models.JSONField(default=list, blank=True)
+    # When the run was finalized: every comparison final, or the deadline passed. Set once.
+    finalized = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ("-created", "-pk")
@@ -237,6 +266,35 @@ class ComparisonRun(NetBoxModel):
 
     def get_status_color(self):
         return ComparisonStatusChoices.colors.get(self.status)
+
+
+class NotificationDelivery(models.Model):
+    """Delivery of a run's result to one notification module. One row per module linked to
+    the schedule when the run started."""
+
+    run = models.ForeignKey(to=ComparisonRun, on_delete=models.CASCADE, related_name="deliveries")
+    module = models.CharField(max_length=100)
+    status = models.CharField(
+        max_length=20, choices=DeliveryStatusChoices, default=DeliveryStatusChoices.PENDING
+    )
+    detail = models.TextField(blank=True)
+    attempted = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("run", "pk")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("run", "module"), name="netbox_compare_unique_delivery_module"
+            ),
+        )
+        verbose_name = _("notification delivery")
+        verbose_name_plural = _("notification deliveries")
+
+    def __str__(self):
+        return f"{self.run} -> {self.module}"
+
+    def get_status_color(self):
+        return DeliveryStatusChoices.colors.get(self.status)
 
 
 def run_status(statuses) -> str:

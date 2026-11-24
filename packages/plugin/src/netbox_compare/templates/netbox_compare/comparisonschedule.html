@@ -27,6 +27,10 @@
         <tr><th scope="row">{% trans "First run" %}</th><td>{{ object.start_time|isodatetime }}</td></tr>
         <tr><th scope="row">{% trans "Repeats" %}</th><td>{{ object.get_recurrence_display }}</td></tr>
         <tr>
+          <th scope="row">{% trans "Notifications" %}</th>
+          <td>{% for n in object.notifications %}<code>{{ n }}</code>{% if not forloop.last %}, {% endif %}{% empty %}{{ ''|placeholder }}{% endfor %}</td>
+        </tr>
+        <tr>
           <th scope="row">{% trans "Next run" %}</th>
           <td>
             {% if not object.enabled %}

@@ -18,8 +18,7 @@ from typing import Any
 
 from netbox_compare_core import FIELDS, NOT_IN_SCHEMA, ObjectType, Snapshot, Unavailable
 from netbox_compare_core.canonical import FieldSpec, Record, fields_of, key_field
-
-SEVERITIES = ("low", "medium", "high", "critical")
+from netbox_compare_core.notification import SEVERITIES
 
 
 class Kind(StrEnum):

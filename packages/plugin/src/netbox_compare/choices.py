@@ -113,3 +113,17 @@ class RecurrenceChoices(ChoiceSet):
         (WEEKLY, _("Weekly")),
         (MONTHLY, _("Monthly")),
     )
+
+
+class DeliveryStatusChoices(ChoiceSet):
+    """Delivery of a scheduled run's result to one notification module."""
+
+    PENDING = "pending"  # waiting for the run to finish, or queued for sending
+    SENT = "sent"
+    FAILED = "failed"
+
+    CHOICES = (
+        (PENDING, _("Pending"), "cyan"),
+        (SENT, _("Sent"), "green"),
+        (FAILED, _("Failed"), "red"),
+    )

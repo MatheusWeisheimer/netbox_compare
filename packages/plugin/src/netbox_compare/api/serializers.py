@@ -12,6 +12,7 @@ from netbox_compare.models import (
     ComparisonRun,
     ComparisonSchedule,
     Divergence,
+    NotificationDelivery,
 )
 from netbox_compare.policy import validate_policy_fields
 
@@ -156,6 +157,7 @@ class ComparisonScheduleSerializer(PrimaryModelSerializer):
             "device_tags",
             "start_time",
             "recurrence",
+            "notifications",
             "run_count",
             "owner",
             "comments",
@@ -180,6 +182,13 @@ class ComparisonScheduleSerializer(PrimaryModelSerializer):
         return data
 
 
+class NotificationDeliverySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationDelivery
+        fields = ("module", "status", "detail", "attempted")
+        read_only_fields = fields
+
+
 class ComparisonRunSerializer(NetBoxModelSerializer):
     url = serializers.HyperlinkedIdentityField(
         view_name="plugins-api:netbox_compare-api:comparisonrun-detail"
@@ -188,6 +197,7 @@ class ComparisonRunSerializer(NetBoxModelSerializer):
     policy = ComparisonPolicySerializer(nested=True, read_only=True)
     status = serializers.CharField(read_only=True)
     comparisons = ComparisonSerializer(many=True, read_only=True)
+    deliveries = NotificationDeliverySerializer(many=True, read_only=True)
 
     class Meta:
         model = ComparisonRun
@@ -202,6 +212,8 @@ class ComparisonRunSerializer(NetBoxModelSerializer):
             "requested_by",
             "job",
             "skipped",
+            "finalized",
+            "deliveries",
             "comparisons",
             "tags",
             "custom_fields",

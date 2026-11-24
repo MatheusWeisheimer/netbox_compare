@@ -13,6 +13,7 @@ members = [
     "netbox-compare-napalm",
     "netbox-compare-vaultwarden",
     "netbox-compare-workspace",
+    "netbox-compare-zabbix",
 ]
 
 [[package]]
@@ -871,6 +872,7 @@ dependencies = [
     { name = "netbox-compare-core" },
     { name = "netbox-compare-napalm" },
     { name = "netbox-compare-vaultwarden" },
+    { name = "netbox-compare-zabbix" },
 ]
 
 [package.dev-dependencies]
@@ -884,12 +886,28 @@ requires-dist = [
     { name = "netbox-compare-core", editable = "packages/core" },
     { name = "netbox-compare-napalm", editable = "packages/connection-napalm" },
     { name = "netbox-compare-vaultwarden", editable = "packages/credentials-vaultwarden" },
+    { name = "netbox-compare-zabbix", editable = "packages/notification-zabbix" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
+name = "netbox-compare-zabbix"
+version = "0.1.0"
+source = { editable = "packages/notification-zabbix" }
+dependencies = [
+    { name = "netbox-compare-core" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "netbox-compare-core", editable = "packages/core" },
+    { name = "requests", specifier = ">=2.31" },
 ]
 
 [[package]]

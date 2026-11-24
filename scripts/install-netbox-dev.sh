@@ -15,6 +15,7 @@ CONF="$NETBOX/netbox/netbox/configuration.py"
     -e "$REPO/packages/core" \
     -e "$REPO/packages/credentials-vaultwarden" \
     -e "$REPO/packages/connection-napalm[vrp]" \
+    -e "$REPO/packages/notification-zabbix" \
     -e "$REPO/packages/plugin"
 
 # Replace the PLUGINS_CONFIG block (from "PLUGINS_CONFIG = {" to the next "}" at column 0).

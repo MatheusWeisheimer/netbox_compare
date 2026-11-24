@@ -34,6 +34,11 @@ urlpatterns = [
         include(get_model_urls("netbox_compare", "comparisonrun")),
     ),
     path(
+        "runs/<int:pk>/notify/",
+        views.ComparisonRunNotifyView.as_view(),
+        name="comparisonrun_notify",
+    ),
+    path(
         "comparisons/",
         include(get_model_urls("netbox_compare", "comparison", detail=False)),
     ),

@@ -15,6 +15,7 @@ from netbox.plugins import get_plugin_config
 from netbox_compare_core import (
     ConnectionModule,
     CredentialsProvider,
+    NotificationModule,
     PlatformCapabilities,
     entrypoints,
 )
@@ -81,6 +82,20 @@ def get_credentials_providers() -> list[tuple[str, CredentialsProvider]]:
 
 def get_connection_modules() -> list[tuple[str, ConnectionModule]]:
     return _configured(entrypoints.CONNECTIONS, "connections", ConnectionModule)  # type: ignore[return-value]
+
+
+def get_notification_modules() -> list[tuple[str, NotificationModule]]:
+    return _configured(entrypoints.NOTIFICATIONS, "notifications", NotificationModule)  # type: ignore[return-value]
+
+
+def notification_module(name: str) -> NotificationModule | None:
+    return dict(get_notification_modules()).get(name)
+
+
+def configured_notification_names() -> list[str]:
+    """Names of the notification modules listed in the plugin config, in config order,
+    whether or not they loaded (a module that fails to load is reported at delivery)."""
+    return [e.get("module") for e in get_plugin_config("netbox_compare", "notifications") or []]
 
 
 def connection_for_platform(

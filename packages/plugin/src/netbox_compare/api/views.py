@@ -42,7 +42,11 @@ class ComparisonScheduleViewSet(NetBoxModelViewSet):
 
 class ComparisonRunViewSet(NetBoxReadOnlyModelViewSet):
     queryset = ComparisonRun.objects.select_related("schedule", "policy").prefetch_related(
-        "comparisons__device", "comparisons__policy", "comparisons__divergences", "tags"
+        "comparisons__device",
+        "comparisons__policy",
+        "comparisons__divergences",
+        "deliveries",
+        "tags",
     )
     serializer_class = ComparisonRunSerializer
     filterset_class = ComparisonRunFilterSet

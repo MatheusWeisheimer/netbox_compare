@@ -12,7 +12,7 @@
 
 {% block head %}
   {{ block.super }}
-  {% if status != 'completed' %}<meta http-equiv="refresh" content="5">{% endif %}
+  {% if status != 'completed' or notifying and object.finalized %}<meta http-equiv="refresh" content="5">{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -72,6 +72,42 @@
     </div>
   </div>
 </div>
+
+{% if deliveries %}
+<div class="row mb-3">
+  <div class="col col-12">
+    <div class="card">
+      <h2 class="card-header d-flex align-items-center">
+        <span class="flex-grow-1">{% trans "Notifications" %}</span>
+        {% if can_resend %}
+          <form action="{% url 'plugins:netbox_compare:comparisonrun_notify' pk=object.pk %}" method="post" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-primary" title="{% trans 'Send this result to the notification modules again' %}">
+              <i class="mdi mdi-send"></i> {% trans "Resend" %}
+            </button>
+          </form>
+        {% endif %}
+      </h2>
+      {% if not object.finalized %}
+        <div class="card-body pb-0 text-muted small">{% trans "Sent when every device comparison has finished." %}</div>
+      {% endif %}
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>{% trans "Module" %}</th><th>{% trans "Status" %}</th><th>{% trans "Detail" %}</th><th>{% trans "Attempted" %}</th></tr></thead>
+        <tbody>
+          {% for d in deliveries %}
+            <tr>
+              <td><code>{{ d.module }}</code></td>
+              <td>{% badge d.get_status_display d.get_status_color %}</td>
+              <td class="{% if d.status == 'failed' %}text-danger{% endif %}" style="white-space: pre-line">{{ d.detail|placeholder }}</td>
+              <td>{{ d.attempted|isodatetime|placeholder }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if comparisons %}
 <div class="row mb-3">
